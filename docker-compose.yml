@@ -1,0 +1,60 @@
+# GrowthPilot AI — reproducible stack with PostgreSQL.
+# NOTE: written for Docker Compose v2 but NOT yet run: Docker isn't installed on the machine this was built on.
+# The local, verified path is `make setup && make demo && make dev` (SQLite). See docs/KNOWN_LIMITATIONS.md.
+#
+#   cp .env.example .env   # then fill SECRET_KEY / ENCRYPTION_KEY (make env) and any API keys
+#   docker compose up --build
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: growthpilot
+      POSTGRES_PASSWORD: growthpilot-local-only
+      POSTGRES_DB: growthpilot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U growthpilot"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://growthpilot:growthpilot-local-only@db:5432/growthpilot
+      ASSET_DIR: /data/assets
+      RUN_WORKER_IN_PROCESS: "false"
+    volumes:
+      - assets:/data/assets
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "growthpilot", "serve", "--host", "0.0.0.0", "--port", "8000"]
+
+  worker:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://growthpilot:growthpilot-local-only@db:5432/growthpilot
+      ASSET_DIR: /data/assets
+      RUN_WORKER_IN_PROCESS: "false"
+    volumes:
+      - assets:/data/assets
+    depends_on:
+      api:
+        condition: service_started
+    command: ["python", "-m", "growthpilot", "worker"]
+
+  web:
+    build: ./frontend
+    environment:
+      BACKEND_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  assets:
