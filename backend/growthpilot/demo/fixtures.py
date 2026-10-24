@@ -1,7 +1,10 @@
-"""Demo data: a FICTIONAL furniture brand and SYNTHETIC observations/metrics.
+"""Demo data.
 
-Nothing here describes a real business. Every row is flagged ``is_synthetic=True`` and the UI labels it.
-Fixture research has no source URLs, because inventing URLs would fabricate provenance.
+* ``poojaloka`` (default, see ``demo/poojaloka.py``): the real brand's catalogue from a dated snapshot, plus
+  labelled fixtures for what can't be real in a credential-free demo (competitors, trends, metrics).
+* ``aranya``: a FICTIONAL furniture brand with SYNTHETIC observations/metrics, kept for regression tests.
+  Every row is flagged ``is_synthetic=True`` and the UI labels it. Fixture research has no source URLs, because
+  inventing URLs would fabricate provenance.
 """
 
 from __future__ import annotations
@@ -9,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from .. import audit
@@ -17,6 +20,7 @@ from ..adapters.base import ConnectionContext
 from ..adapters.demo_instagram import DemoInstagramAdapter
 from ..models import (
     AgentRun,
+    ApprovalRequest,
     Asset,
     Brand,
     Campaign,
@@ -36,6 +40,7 @@ from ..models import (
     Recommendation,
     Report,
     ResearchFinding,
+    UsageRecord,
     utcnow,
 )
 from ..services.assets import make_placeholder, store
@@ -150,8 +155,10 @@ def clear_workspace(db: Session, workspace_id: int) -> None:
     for model in (MetricSnapshot, PublishAttempt):
         ids = select(ContentItem.id).where(ContentItem.workspace_id == workspace_id)
         db.execute(delete(model).where(model.content_id.in_(ids)))
+    db.execute(update(ContentItem).where(ContentItem.workspace_id == workspace_id).values(master_id=None))
     for model in (ContentItem, Recommendation, Report, Experiment, Hypothesis, CompetitorObservation, Competitor,
-                  ResearchFinding, Campaign, AgentRun, ChannelConnection, Persona, Product):
+                  ResearchFinding, ApprovalRequest, UsageRecord, Campaign, AgentRun, ChannelConnection, Persona,
+                  Product):
         db.execute(delete(model).where(model.workspace_id == workspace_id))
     for a in db.execute(select(Asset).where(Asset.workspace_id == workspace_id)).scalars().all():
         store().delete(a.storage_key)
@@ -160,8 +167,22 @@ def clear_workspace(db: Session, workspace_id: int) -> None:
     db.flush()
 
 
-def seed(db: Session, workspace_id: int, user_id: int | None) -> dict:
+BRANDS = ("poojaloka", "aranya")
+
+
+def seed(db: Session, workspace_id: int, user_id: int | None, brand: str = "poojaloka") -> dict:
+    """Replace the workspace's marketing data with a demo brand."""
     clear_workspace(db, workspace_id)
+    if brand == "poojaloka":
+        from . import poojaloka
+
+        return poojaloka.seed(db, workspace_id, user_id)
+    if brand != "aranya":
+        raise ValueError(f"Unknown demo brand {brand!r}")
+    return seed_aranya(db, workspace_id, user_id)
+
+
+def seed_aranya(db: Session, workspace_id: int, user_id: int | None) -> dict:
     now = utcnow()
     brand = Brand(workspace_id=workspace_id, is_synthetic=True, **BRAND)
     db.add(brand)
@@ -250,11 +271,14 @@ def seed(db: Session, workspace_id: int, user_id: int | None) -> dict:
                               idempotency_key=f"{item.id}:v1", success=True, external_id=item.external_id,
                               provider_status="SIMULATED_PUBLISHED", summary="Synthetic history.",
                               attempted_at=when))
-    audit.record(db, "demo.seeded", workspace_id=workspace_id, user_id=user_id)
+    audit.record(db, "demo.seeded", workspace_id=workspace_id, user_id=user_id, brand="aranya")
     db.flush()
-    return {"brand_id": brand.id, "products": len(products), "history_campaign_id": hist.id, "experiment_id": exp.id}
+    return {"brand_id": brand.id, "products": len(products), "history_campaign_id": hist.id, "experiment_id": exp.id,
+            "brand": "aranya"}
 
 
-DEMO_GOAL = ("Create a seven-day Instagram campaign for our new Kabini sofa collection aimed at urban homeowners in "
-             "Bengaluru ahead of Diwali.")
-EVAL_GOAL = "Evaluate last month's results and recommend what to change next week."
+ARANYA_GOAL = ("Create a seven-day Instagram campaign for our new Kabini sofa collection aimed at urban homeowners in "
+               "Bengaluru ahead of Diwali.")
+ARANYA_EVAL_GOAL = "Evaluate last month's results and recommend what to change next week."
+
+from .poojaloka import DEMO_GOAL, EVAL_GOAL, SEVEN_PLATFORM_GOAL  # noqa: E402,F401

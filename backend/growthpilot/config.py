@@ -58,26 +58,41 @@ class Settings(BaseSettings):
     base_url: str = "http://localhost:3000"
     asset_dir: str = ""
 
-    # LLM
-    llm_provider: str = "anthropic"  # anthropic (live). Demo mode always uses the deterministic planner.
-    llm_api_key: str = ""
+    # LLM. Demo mode always uses the deterministic planner and generator.
+    # auto = Gemini if GEMINI_API_KEY is set, else Anthropic if LLM_API_KEY/ANTHROPIC_API_KEY is set.
+    llm_provider: str = "auto"  # auto | gemini | anthropic
+    llm_api_key: str = ""  # Anthropic key (kept for compatibility)
     anthropic_api_key: str = ""  # accepted as an alias for LLM_API_KEY
-    llm_model: str = "claude-opus-5-5"
+    llm_model: str = "claude-opus-5-5"  # Anthropic model
     llm_effort: str = "medium"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.8-flash"
+    gemini_thinking_level: str = "medium"  # minimal | low | medium | high (per-model support varies)
 
     # Research
     search_provider: str = "brave"  # brave | none
-    search_api_key: str = ""
+    brave_search_api_key: str = ""
+    search_api_key: str = ""  # accepted as an alias for BRAVE_SEARCH_API_KEY
+    search_cache_hours: int = Field(default=24, ge=0, le=720)
 
-    # Image generation (no provider implemented yet; see docs/API_INTEGRATIONS.md)
-    image_generation_provider: str = "none"
-    image_generation_api_key: str = ""
+    # Image generation for optional AI backgrounds (product imagery always comes from real photos).
+    image_generation_provider: str = "none"  # none | gemini
+    image_generation_model: str = "gemini-3.1-flash-lite-image"
+    image_generation_api_key: str = ""  # defaults to GEMINI_API_KEY when the provider is gemini
+
+    # Catalogue ingestion (Poojaloka storefront API). Demo mode uses the bundled snapshot unless allowed.
+    poojaloka_api_base: str = "https://api.poojaloka.com/api"
+    demo_allow_catalogue_sync: bool = False
+    catalogue_fresh_hours: int = Field(default=24, ge=1, le=24 * 30)
 
     # Instagram API with Instagram Login (Meta)
     meta_app_id: str = ""
     meta_app_secret: str = ""
     meta_redirect_uri: str = ""  # defaults to {BASE_URL}/api/integrations/instagram/callback
     instagram_api_version: str = "v26.0"
+    # Facebook Pages (Facebook Login for Business; same Meta app)
+    facebook_redirect_uri: str = ""  # defaults to {BASE_URL}/api/integrations/facebook/callback
+    facebook_api_version: str = "v26.0"
 
     # Safety switches
     live_publishing_enabled: bool = False
@@ -107,12 +122,44 @@ class Settings(BaseSettings):
         return self.llm_api_key or self.anthropic_api_key
 
     @property
+    def active_llm_provider(self) -> str | None:
+        """Which LLM provider live mode will use, or None if none is configured."""
+        if self.llm_provider == "gemini":
+            return "gemini" if self.gemini_api_key else None
+        if self.llm_provider == "anthropic":
+            return "anthropic" if self.llm_key else None
+        if self.gemini_api_key:
+            return "gemini"
+        return "anthropic" if self.llm_key else None
+
+    @property
     def llm_configured(self) -> bool:
-        return self.llm_provider == "anthropic" and bool(self.llm_key)
+        return self.active_llm_provider is not None
+
+    @property
+    def active_llm_model(self) -> str:
+        return self.gemini_model if self.active_llm_provider == "gemini" else self.llm_model
+
+    @property
+    def brave_key(self) -> str:
+        return self.brave_search_api_key or self.search_api_key
 
     @property
     def search_configured(self) -> bool:
-        return self.search_provider == "brave" and bool(self.search_api_key)
+        return self.search_provider == "brave" and bool(self.brave_key)
+
+    @property
+    def image_key(self) -> str:
+        return self.image_generation_api_key or (self.gemini_api_key if self.image_generation_provider == "gemini"
+                                                 else "")
+
+    @property
+    def image_generation_configured(self) -> bool:
+        return self.image_generation_provider == "gemini" and bool(self.image_key)
+
+    @property
+    def facebook_redirect(self) -> str:
+        return self.facebook_redirect_uri or f"{self.base_url.rstrip('/')}/api/integrations/facebook/callback"
 
     @property
     def instagram_configured(self) -> bool:
@@ -131,9 +178,10 @@ class Settings(BaseSettings):
         out = []
         if self.is_live:
             if not self.llm_configured:
-                out.append({"key": "LLM_API_KEY", "impact": "Agent runs and content generation are unavailable."})
+                out.append({"key": "GEMINI_API_KEY (or LLM_API_KEY)",
+                            "impact": "Agent runs and content generation are unavailable."})
             if not self.search_configured:
-                out.append({"key": "SEARCH_API_KEY", "impact": "Web research is unavailable; agent will say so."})
+                out.append({"key": "BRAVE_SEARCH_API_KEY", "impact": "Web research is unavailable; agent will say so."})
             if not self.instagram_configured:
                 out.append({"key": "META_APP_ID / META_APP_SECRET", "impact": "Instagram can't be connected."})
             if not self.secure_cookies:
@@ -145,10 +193,14 @@ class Settings(BaseSettings):
     def _fill_and_check(self) -> Settings:
         if self.llm_effort not in {"low", "medium", "high", "xhigh", "max"}:
             raise ConfigError("LLM_EFFORT must be one of low, medium, high, xhigh, max")
-        if self.llm_provider not in {"anthropic"}:
-            raise ConfigError("LLM_PROVIDER must be 'anthropic' (the only implemented provider).")
+        if self.llm_provider not in {"auto", "anthropic", "gemini"}:
+            raise ConfigError("LLM_PROVIDER must be auto, gemini or anthropic.")
+        if self.gemini_thinking_level not in {"minimal", "low", "medium", "high"}:
+            raise ConfigError("GEMINI_THINKING_LEVEL must be minimal, low, medium or high.")
         if self.search_provider not in {"brave", "none"}:
             raise ConfigError("SEARCH_PROVIDER must be 'brave' or 'none'.")
+        if self.image_generation_provider not in {"none", "gemini"}:
+            raise ConfigError("IMAGE_GENERATION_PROVIDER must be none or gemini.")
 
         if not self.database_url:
             name = "test.db" if self.app_env == AppEnv.TEST else f"{self.app_mode.value}.db"

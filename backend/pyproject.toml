@@ -21,6 +21,7 @@ dependencies = [
   "httpx>=0.27",
   "anthropic>=2.3",
   "psycopg[binary]>=3.2",
+  "pillow>=12.0",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +32,9 @@ growthpilot = "growthpilot.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["growthpilot*"]
+
+[tool.setuptools.package-data]
+growthpilot = ["creative/fonts/*.ttf", "creative/fonts/*.txt", "demo/*.json"]
 
 
 [tool.pytest.ini_options]

@@ -9,9 +9,12 @@ from sqlalchemy import or_, select
 from ... import audit, worker
 from ...adapters import available_adapters
 from ...agent.generation import SlotContentOut, get_generator, product_dict
+from ...agent.tools.common import brief_for
 from ...config import get_settings
 from ...llm import LLMError, get_llm
 from ...models import (
+    AgentRun,
+    ApprovalRequest,
     Asset,
     Brand,
     Campaign,
@@ -24,8 +27,11 @@ from ...models import (
     ResearchFinding,
     utcnow,
 )
+from ...platforms import SPECS
 from ...services import content as workflow
+from ...services import creative as creative_service
 from ...services import publishing
+from ...services import variants as variants_service
 from ...services.errors import PermissionDenied, WorkflowError
 from ...services.validation import final_caption, validate_item
 from .. import serializers as S
@@ -58,10 +64,25 @@ def _to_utc(value: str, ctx: Ctx) -> datetime:
 def _detail(ctx: Ctx, item: ContentItem) -> dict:
     d = S.content(item, ctx.tz, full=True)
     assets = [ctx.db.get(Asset, i) for i in ([item.asset_id] if item.asset_id else []) + list(item.slide_asset_ids or [])]
-    d["assets"] = [S.asset(a) for a in assets if a]
+    d["assets"] = [S.asset(a, full=True) for a in assets if a]
     prods = ctx.db.execute(select(Product).where(Product.id.in_(item.product_ids or [0]))).scalars().all()
     d["products"] = [S.product(p) for p in prods]
     d["final_caption"] = final_caption(item)
+    sp = SPECS.get(item.platform)
+    d["platform_spec"] = sp.as_dict() if sp else None
+    d["approval_intact"] = workflow.approval_intact(ctx.db, item) if item.approved_hash else None
+    master_id = item.master_id or item.id
+    family = ctx.db.execute(select(ContentItem).where(or_(ContentItem.id == master_id,
+                                                          ContentItem.master_id == master_id))
+                            .order_by(ContentItem.id)).scalars().all()
+    d["family"] = [S.content(f, ctx.tz) for f in family]
+    camp = item.campaign
+    if camp:
+        h = ctx.db.execute(select(Hypothesis).where(Hypothesis.campaign_id == camp.id,
+                                                    Hypothesis.selected.is_(True))).scalars().first()
+        d["hypothesis"] = S.hypothesis(h) if h else None
+        d["evidence"] = [S.finding(f) for f in ctx.db.execute(select(ResearchFinding).where(
+            ResearchFinding.id.in_((h.evidence_ids if h else None) or [0]))).scalars()]
     return d
 
 
@@ -70,8 +91,10 @@ def _detail(ctx: Ctx, item: ContentItem) -> dict:
 
 @router.get("/content")
 def list_content(status: str = "", campaign_id: int | None = None, platform: str = "", content_type: str = "",
-                 q: str = "", ctx: Ctx = Depends(get_ctx)):
+                 q: str = "", main_only: bool = False, ctx: Ctx = Depends(get_ctx)):
     query = select(ContentItem).where(ContentItem.workspace_id == ctx.workspace.id)
+    if main_only:
+        query = query.where(ContentItem.master_id.is_(None))
     if status:
         query = query.where(ContentItem.status.in_(status.split(",")))
     if campaign_id:
@@ -131,7 +154,7 @@ def create_content(body: NewContentIn, ctx: Ctx = Depends(get_ctx)):
     b = current_brand(ctx)
     if body.campaign_id:
         ctx.get(Campaign, body.campaign_id)
-    if body.platform not in ("instagram", "pinterest", "facebook", "tiktok", "youtube"):
+    if body.platform not in SPECS:
         raise ApiError(400, "Unknown platform.", "validation")
     item = ContentItem(workspace_id=ctx.workspace.id, brand_id=b.id, campaign_id=body.campaign_id,
                        platform=body.platform, created_by=ctx.user.id, generated_by="human")
@@ -187,13 +210,22 @@ def regenerate(cid: int, body: RegenIn, ctx: Ctx = Depends(get_ctx)):
         raise ApiError(400, str(exc), "llm_unavailable") from exc
     brand = ctx.db.get(Brand, item.brand_id)
     prods = [product_dict(p) for p in ctx.db.execute(select(Product).where(Product.id.in_(item.product_ids or [0]))).scalars()]
-    brief = {"brand": {k: getattr(brand, k) for k in ("name", "description", "voice", "tone", "audience", "location",
-                                                       "visual_guidelines", "approved_claims", "restricted_claims",
-                                                       "prohibited_messaging")}, "geography": brand.location}
+    run = ctx.db.get(AgentRun, item.run_id) if item.run_id else None
+    brief = brief_for(ctx.db, brand, workspace_id=ctx.workspace.id, params=(run.state or {}).get("params") if run else None)
     current = {"title": item.title, "hook": item.hook, "caption": item.caption, "hashtags": item.hashtags,
                "cta": item.cta, "image_brief": item.image_brief, "carousel_outline": item.carousel_outline,
                "product_ids": item.product_ids}
     try:
+        master = ctx.db.get(ContentItem, item.master_id) if item.master_id else None
+        if master is not None:  # a platform variant: re-adapt from the main post, nothing else changes
+            fields, _t, rationale = variants_service.adapted_fields(gen, brief, master, item.platform, prods)
+            fields.pop("video_script", None)
+            _guard(lambda: workflow.update(ctx.db, item, fields, user_id=ctx.user.id, role=ctx.role, source=gen.name,
+                                           note=f"Regenerated the {item.platform} variant"))
+            item.rationale = rationale[:2000]
+            validate_item(ctx.db, item)
+            ctx.db.commit()
+            return _detail(ctx, item) | {"generator": gen.name, "is_mock": gen.is_mock}
         if body.instructions.strip() and not gen.is_mock:
             out, _ = gen.revise(brief, current, [{"message": body.instructions, "claim": ""}], prods)
         else:
@@ -212,6 +244,80 @@ def regenerate(cid: int, body: RegenIn, ctx: Ctx = Depends(get_ctx)):
     validate_item(ctx.db, item)
     ctx.db.commit()
     return _detail(ctx, item) | {"generator": gen.name, "is_mock": gen.is_mock}
+
+
+class CreativeIn(BaseModel):
+    variation: int = Field(default=0, ge=0, le=5)
+    template: str | None = None
+    ai_background: bool = False
+
+
+@router.post("/content/{cid}/creative")
+def rerender(cid: int, body: CreativeIn, ctx: Ctx = Depends(get_ctx)):
+    """Render this item's image(s) again (new version; any approval is reset). Other platforms are unaffected."""
+    ctx.require_editor()
+    rate_limit(f"render:{ctx.workspace.id}", 120, 3600)
+    item = ctx.get(ContentItem, cid)
+    if item.content_type not in ("post", "carousel"):
+        raise ApiError(400, "Only image posts and carousels have rendered creatives.", "workflow")
+    try:
+        cover = creative_service.render_for_item(ctx.db, item, template=body.template, variation=body.variation,
+                                                 ai_background=body.ai_background)
+        slides = []
+        if item.content_type == "carousel":
+            outline = [x for x in (item.carousel_outline or [])[1:] if x.strip()][:5] or [item.cta or item.title]
+            for i, line in enumerate(outline, start=2):
+                slides.append(creative_service.render_for_item(ctx.db, item, slide=(i, len(outline) + 1),
+                                                               headline=line, variation=body.variation).id)
+    except WorkflowError as exc:
+        raise ApiError(400, str(exc), "creative_check") from exc
+    _guard(lambda: workflow.update(ctx.db, item, {"asset_id": cover.id, "slide_asset_ids": slides},
+                                   user_id=ctx.user.id, role=ctx.role, source="creative-studio",
+                                   note=f"Re-rendered ({cover.meta.get('template')}, variation {body.variation})"))
+    validate_item(ctx.db, item)
+    ctx.db.commit()
+    return _detail(ctx, item)
+
+
+class VariantsIn(BaseModel):
+    platforms: list[str] = Field(min_length=1, max_length=7)
+
+
+@router.post("/content/{cid}/variants")
+def add_variants(cid: int, body: VariantsIn, ctx: Ctx = Depends(get_ctx)):
+    """Create platform variants of a main post (each with its own approval and status)."""
+    ctx.require_editor()
+    item = ctx.get(ContentItem, cid)
+    if item.master_id:
+        raise ApiError(400, "Create variants from the main post.", "workflow")
+    bad = [p for p in body.platforms if p not in SPECS]
+    if bad:
+        raise ApiError(400, f"Unknown platform(s): {', '.join(bad)}.", "validation")
+    try:
+        gen = get_generator(get_llm())
+    except LLMError as exc:
+        raise ApiError(400, str(exc), "llm_unavailable") from exc
+    brand = ctx.db.get(Brand, item.brand_id)
+    prods = [product_dict(p) for p in ctx.db.execute(select(Product).where(Product.id.in_(item.product_ids or [0]))).scalars()]
+    brief = brief_for(ctx.db, brand, workspace_id=ctx.workspace.id)
+    created = []
+    for p in body.platforms:
+        if p == item.platform or variants_service.existing_variant(ctx.db, item, p):
+            continue
+        try:
+            v, _ = variants_service.create_variant(ctx.db, item, p, gen, brief, prods, created_by=ctx.user.id)
+        except LLMError as exc:
+            raise ApiError(502, str(exc), "llm_error") from exc
+        if v.content_type in ("post", "carousel"):
+            try:
+                cover = creative_service.render_for_item(ctx.db, v)
+                v.asset_id = cover.id
+            except WorkflowError:
+                pass
+        validate_item(ctx.db, v)
+        created.append(v.id)
+    ctx.db.commit()
+    return {"created": created, "item": _detail(ctx, item)}
 
 
 # ── workflow actions ─────────────────────────────────────────────────────
@@ -388,9 +494,12 @@ def approvals(ctx: Ctx = Depends(get_ctx)):
         d["target_connections"] = [S.connection(c) for c in conns if c.adapter in allowed
                                    and allowed[c.adapter].platform in ("any", i.platform)]
         out.append(d)
+    reqs = ctx.db.execute(select(ApprovalRequest).where(ApprovalRequest.workspace_id == ctx.workspace.id,
+                                                        ApprovalRequest.status == "pending")
+                          .order_by(ApprovalRequest.requested_at)).scalars().all()
     ctx.db.commit()
-    return {"items": out, "live_publishing_enabled": get_settings().live_publishing_enabled,
-            "mode": get_settings().app_mode.value}
+    return {"items": out, "requests": [S.approval_request(r) for r in reqs],
+            "live_publishing_enabled": get_settings().live_publishing_enabled, "mode": get_settings().app_mode.value}
 
 
 @router.get("/calendar")

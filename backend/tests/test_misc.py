@@ -54,7 +54,7 @@ def test_problems_never_include_values(monkeypatch, tmp_path):
     _configure(monkeypatch, tmp_path, "live", META_APP_ID="123")
     probs = config.get_settings().problems()
     keys = {p["key"] for p in probs}
-    assert "LLM_API_KEY" in keys and "SEARCH_API_KEY" in keys
+    assert any("GEMINI_API_KEY" in k for k in keys) and "BRAVE_SEARCH_API_KEY" in keys
     assert "123" not in json.dumps(probs)
 
 

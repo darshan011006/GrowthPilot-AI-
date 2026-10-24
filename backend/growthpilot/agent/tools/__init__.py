@@ -1,3 +1,6 @@
-"""Importing this package registers every tool in ``agent.registry.REGISTRY``."""
+"""Importing this package registers every tool in ``agent.registry.REGISTRY``.
 
-from . import checks, competitors, context, creative, execution, learning, planning, research  # noqa: F401
+Tools are grouped by the specialist role that owns them: research, strategy, creative, verification,
+distribution and learning (Performance Analyst)."""
+
+from . import creative, distribution, learning, research, strategy, verification  # noqa: F401

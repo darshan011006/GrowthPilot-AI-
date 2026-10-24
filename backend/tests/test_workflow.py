@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from growthpilot.db import session_scope
-from growthpilot.models import ChannelConnection, ContentItem, PublishAttempt, utcnow
-from growthpilot.services import publishing
+from growthpilot.models import Asset, ChannelConnection, ContentItem, PublishAttempt, utcnow
+from growthpilot.services import assets, publishing
 
 from .conftest import Api, make_client
 
@@ -118,9 +120,15 @@ def test_publish_is_idempotent_and_rechecks_version(demo_seeded):
     b = _approved(api, caption="Evening light on the Kabini 3-Seater Sofa.")
     r = api.post(f"/api/content/{b['id']}/schedule", json={"connection_id": _demo_conn(api)})
     assert r.status_code == 200, r.text
+    # The database itself refuses a scheduled item whose version no longer matches its approval.
+    with pytest.raises(IntegrityError):
+        with session_scope() as db:
+            db.get(ContentItem, b["id"]).version += 1
+    # The image file is swapped behind the workflow's back: the approval hash no longer matches.
     with session_scope() as db:
         item = db.get(ContentItem, b["id"])
-        item.version += 1  # content changed behind the workflow's back
+        path = assets.store().path(db.get(Asset, item.asset_id).storage_key)
+        path.write_bytes(path.read_bytes() + b"tampered")
         item.scheduled_at = utcnow()
     with session_scope() as db:
         publishing.publish_item(db, b["id"])

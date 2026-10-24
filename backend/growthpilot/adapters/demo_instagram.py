@@ -1,4 +1,4 @@
-"""Mock Instagram adapter for demo mode. Simulates the container → publish → verify flow locally.
+"""Simulated adapters for demo mode — one per platform. They mimic each platform's publish → verify flow locally.
 
 Nothing is sent anywhere. Every result is labelled as simulated, and metrics are synthetic.
 """
@@ -8,9 +8,10 @@ from __future__ import annotations
 import hashlib
 import math
 
-from ..models import Platform
+from ..platforms import SPECS
 from .base import (
     AccountInfo,
+    AdapterError,
     Capabilities,
     ConnectionContext,
     Metrics,
@@ -21,41 +22,56 @@ from .base import (
 
 # Synthetic engagement multipliers, so the demo's adaptive loop has a pattern to find.
 # These are fixture assumptions, not real-world benchmarks.
-_TYPE_FACTOR = {"carousel": 1.35, "reel": 1.2, "post": 1.0, "story": 0.6}
+_TYPE_FACTOR = {"carousel": 1.35, "reel": 1.2, "post": 1.0, "story": 0.6, "text": 0.7}
 _PILLAR_FACTOR = {"styling tips": 1.4, "small-space solutions": 1.3, "craft & materials": 1.05,
-                  "product spotlight": 0.85, "festive": 1.15, "customer homes": 1.2}
+                  "product spotlight": 0.85, "festive": 1.15, "customer homes": 1.2,
+                  "festival guide": 1.35, "pooja how-to": 1.3, "ritual essentials": 1.1, "brass care": 1.2,
+                  "product showcase": 0.9, "festival offers": 1.0}
+_PLATFORM_REACH = {"instagram": 1.0, "facebook": 0.7, "pinterest": 0.6, "x": 0.35, "linkedin": 0.3,
+                   "youtube": 0.5, "threads": 0.4}
 
 
 def _seed(s: str) -> int:
     return int(hashlib.sha256(s.encode()).hexdigest()[:8], 16)
 
 
-class DemoInstagramAdapter:
-    key = "demo_instagram"
-    platform = Platform.INSTAGRAM.value
-    label = "Instagram (demo adapter — simulated)"
+class DemoAdapter:
     external = False
     maturity = "mock"
-    capabilities = Capabilities(oauth=False, identity=True, publish=True, scheduling="app-managed",
-                                status_verification=True, analytics=True, content_types=("post", "carousel"))
+
+    def __init__(self, platform: str, handle: str = "poojaloka"):
+        sp = SPECS[platform]
+        self.platform = platform
+        self.key = f"demo_{platform}"
+        self.label = f"{sp.label} (demo adapter — simulated)"
+        self.handle = handle
+        types = tuple(t for t in sp.content_types if t != "video")
+        self.capabilities = Capabilities(oauth=False, identity=True, publish=bool(types), scheduling="app-managed",
+                                         status_verification=True, analytics=True, content_types=types)
 
     def verify_connection(self, ctx: ConnectionContext) -> AccountInfo:
-        return AccountInfo(account_id="demo-account", label="@aranya.living.demo (simulated)")
+        return AccountInfo(account_id=f"demo-{self.platform}", label=f"{self.handle} on {SPECS[self.platform].label} "
+                           "(simulated)")
 
     def publish(self, ctx: ConnectionContext, payload: PublishPayload) -> PublishResult:
-        media_id = f"demo-ig-{payload.content_id}-v{payload.version}"
+        if payload.content_type not in self.capabilities.content_types:
+            raise AdapterError(f"{SPECS[self.platform].label} can't publish a {payload.content_type} through its API.")
+        if (ctx.config or {}).get("simulate_failure"):
+            raise AdapterError(f"Simulated {SPECS[self.platform].label} outage (demo failure injection).",
+                               retryable=False)
+        media_id = f"demo-{'ig' if self.platform == 'instagram' else self.platform}-{payload.content_id}-v{payload.version}"
         return PublishResult(external_id=media_id, url=None, provider_status="SIMULATED_PUBLISHED",
-                             summary="Simulated: container created and published by the demo adapter. "
-                                     "Nothing was posted to Instagram.")
+                             summary=f"Simulated: the demo adapter accepted the post. Nothing was posted to "
+                                     f"{SPECS[self.platform].label}.")
 
     def publication_status(self, ctx: ConnectionContext, external_id: str) -> StatusResult:
-        if external_id.startswith("demo-ig-"):
+        if external_id.startswith("demo-"):
             return StatusResult(state="published", detail="Simulated status from the demo adapter.")
         return StatusResult(state="not_found", detail="Unknown demo media id.")
 
     def fetch_metrics(self, ctx: ConnectionContext, external_id: str, *, hours_since: float, hints: dict) -> Metrics:
         seed = _seed(external_id)
-        base_reach = 1800 + seed % 1400
+        base_reach = (1800 + seed % 1400) * _PLATFORM_REACH.get(self.platform, 0.5)
         growth = 1 - math.exp(-max(hours_since, 0.5) / 20)
         factor = _TYPE_FACTOR.get(hints.get("content_type", "post"), 1.0) * _PILLAR_FACTOR.get(
             (hints.get("pillar") or "").lower(), 1.0)
@@ -65,5 +81,11 @@ class DemoInstagramAdapter:
         return Metrics(
             reach=reach, views=int(reach * 1.6), likes=int(interactions * 0.62), comments=int(interactions * 0.08),
             shares=int(interactions * 0.12), saves=int(interactions * 0.18), profile_visits=int(reach * 0.015),
-            raw={"synthetic": True, "note": "Generated by the demo adapter; not real Instagram data."},
+            link_clicks=int(reach * 0.01) if self.platform in ("facebook", "pinterest", "linkedin", "x") else None,
+            raw={"synthetic": True, "note": "Generated by the demo adapter; not real platform data."},
         )
+
+
+class DemoInstagramAdapter(DemoAdapter):
+    def __init__(self, handle: str = "poojaloka"):
+        super().__init__("instagram", handle)

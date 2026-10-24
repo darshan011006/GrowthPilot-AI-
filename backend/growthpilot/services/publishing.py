@@ -21,6 +21,7 @@ from ..models import ConnectionStatus, ContentItem, ContentStatus, PublishAttemp
 from ..security import redact
 from .assets import public_url
 from .connections import context
+from .content import approval_intact
 from .validation import final_caption, item_assets, validate_item
 
 log = logging.getLogger(__name__)
@@ -84,8 +85,8 @@ def publish_item(db: Session, item_id: int, *, triggered_by: int | None = None) 
         _fail(db, item, "Its connection is missing or not allowed in this mode.")
         db.commit()
         return item
-    if item.approved_version != item.version or item.approved_by is None:
-        _fail(db, item, "Content changed after approval; it needs approval again.")
+    if item.approved_version != item.version or item.approved_by is None or not approval_intact(db, item):
+        _fail(db, item, "Content or media changed after approval; it needs approval again.")
         db.commit()
         return item
     if adapter.external and not item.publish_authorized:

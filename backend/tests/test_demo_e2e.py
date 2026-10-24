@@ -1,8 +1,9 @@
-"""End-to-end demo flow through the HTTP API, with the background worker ticked manually."""
+"""Regression: the fictional Aranya furniture brand through the whole workflow (Instagram only), via the HTTP API."""
 
 from __future__ import annotations
 
-from growthpilot.demo.fixtures import DEMO_GOAL, EVAL_GOAL
+from growthpilot.demo.fixtures import ARANYA_EVAL_GOAL as EVAL_GOAL
+from growthpilot.demo.fixtures import ARANYA_GOAL as DEMO_GOAL
 
 from .conftest import run_worker
 
@@ -24,12 +25,13 @@ def test_full_campaign_flow(demo_seeded):
     search = next(s for s in run["steps"] if s["tool"] == "search_web")
     assert search["status"] == "blocked"
     assert "replan" in phases
-    for t in ("load_brand_context", "retrieve_product_catalogue", "collect_trend_signals", "fetch_competitor_data",
-              "identify_content_gaps", "generate_campaign_hypotheses", "rank_campaign_opportunities",
-              "create_content_calendar", "generate_caption", "validate_product_claims", "request_approval"):
+    for t in ("inspect_brand", "retrieve_catalogue", "analyse_trends", "collect_competitor_references",
+              "identify_content_gaps", "create_campaign_plan", "rank_campaign_ideas", "prepare_schedule",
+              "generate_caption", "generate_creative_asset", "verify_product_facts", "validate_creative",
+              "request_human_approval"):
         assert t in tools, t
-    # The festive post's offer wording fails validation and is revised.
-    assert tools.count("validate_product_claims") >= 2
+    # The festive post's offer wording fails verification and is revised.
+    assert tools.count("verify_product_facts") >= 3
     revise = [s for s in run["steps"] if s["tool"] == "generate_caption" and s["input"].get("revise")]
     assert revise, "expected a revision round"
     # Mock/fixture usage is disclosed on steps.
@@ -51,7 +53,7 @@ def test_full_campaign_flow(demo_seeded):
     run_worker()  # auto-resumed run schedules approved items
     run = api.get(f"/api/agent/runs/{run['id']}").json()
     assert run["status"] == "completed", run
-    sched = [s for s in run["steps"] if s["tool"] == "schedule_publication"][0]
+    sched = [s for s in run["steps"] if s["tool"] == "prepare_schedule" and s["input"].get("commit")][0]
     assert sched["output"]["scheduled"]
 
     # Publish one now via the demo adapter and verify.
@@ -77,7 +79,7 @@ def test_adaptive_loop_evaluates_history(demo_seeded):
     run = _start(api, EVAL_GOAL)
     assert run["status"] == "completed", run
     tools = [s["tool"] for s in run["steps"] if s["phase"] == "tool"]
-    assert "evaluate_experiment" in tools and "revise_marketing_strategy" in tools
+    assert "evaluate_experiment" in tools and "recommend_next_action" in tools
     exps = api.get("/api/experiments").json()
     hist = next(e for e in exps if "synthetic history" in e["name"])
     assert hist["conclusion"] in ("supported", "inconclusive", "not_supported")
@@ -98,6 +100,9 @@ def test_overview_and_reset(demo_seeded):
     assert ov["performance"]["data_source"] == "synthetic"
     r = api.post("/api/demo/reset", json={"confirm": "nope"})
     assert r.status_code == 400
-    r = api.post("/api/demo/reset", json={"confirm": "RESET"})
+    r = api.post("/api/demo/reset", json={"confirm": "RESET", "brand": "aranya"})
     assert r.status_code == 200
     assert len(api.get("/api/products").json()) == 6
+    r = api.post("/api/demo/reset", json={"confirm": "RESET"})
+    assert r.status_code == 200 and r.json()["brand"] == "poojaloka"
+    assert len(api.get("/api/products").json()) == 40

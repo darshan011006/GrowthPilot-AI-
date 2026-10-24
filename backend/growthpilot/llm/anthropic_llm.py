@@ -14,8 +14,9 @@ from typing import Any, TypeVar
 import anthropic
 from pydantic import BaseModel
 
+from .. import usage
 from ..security import redact
-from . import LLMError
+from . import LLMError, strip_provider_fields
 
 log = logging.getLogger(__name__)
 M = TypeVar("M", bound=BaseModel)
@@ -23,11 +24,13 @@ M = TypeVar("M", bound=BaseModel)
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
-def _tokens(usage: Any) -> int:
-    return int(getattr(usage, "input_tokens", 0) or 0) + int(getattr(usage, "output_tokens", 0) or 0)
+def _io(u: Any) -> tuple[int, int]:
+    return int(getattr(u, "input_tokens", 0) or 0), int(getattr(u, "output_tokens", 0) or 0)
 
 
 class AnthropicLLM:
+    provider = "anthropic"
+
     def __init__(self, api_key: str, model: str, effort: str, client: anthropic.Anthropic | None = None):
         self.model = model
         self.effort = effort
@@ -63,7 +66,14 @@ class AnthropicLLM:
         if response.stop_reason == "max_tokens":
             raise LLMError("The model's response was cut off (max tokens). Try a smaller request.")
 
+    def _account(self, response: Any, operation: str) -> int:
+        i, o = _io(response.usage)
+        usage.record(provider="anthropic", operation=operation, model=self.model, input_tokens=i, output_tokens=o)
+        return i + o
+
     def structured(self, system: str, prompt: str, schema: type[M]) -> tuple[M, int]:
+        usage.preflight(usage.estimate_llm_call(self.model, len(system) + len(prompt), 8000),
+                        f"A Claude call ({schema.__name__})")
         response = self._guard(
             lambda: self._client.beta.messages.parse(
                 model=self.model,
@@ -77,14 +87,18 @@ class AnthropicLLM:
                 fallbacks="default",
             )
         )
+        tokens = self._account(response, f"structured:{schema.__name__}")
         self._check_stop(response)
         parsed = response.parsed_output
         if parsed is None:
             raise LLMError("The model returned output that didn't match the expected schema.", retryable=True)
         log.info("llm structured model=%s request_id=%s", response.model, response._request_id)
-        return parsed, _tokens(response.usage)
+        return parsed, tokens
 
     def tool_turn(self, system: str, messages: list[dict], tools: list[dict]) -> tuple[Any, int]:
+        messages = strip_provider_fields(messages)
+        usage.preflight(usage.estimate_llm_call(self.model, len(system) + len(str(messages)) + len(str(tools)), 8000),
+                        "A Claude planning turn")
         response = self._guard(
             lambda: self._client.beta.messages.create(
                 model=self.model,
@@ -99,8 +113,9 @@ class AnthropicLLM:
                 fallbacks="default",
             )
         )
+        tokens = self._account(response, "tool_turn")
         if response.stop_reason == "refusal":
             self._check_stop(response)
         log.info("llm tool_turn model=%s request_id=%s stop=%s", response.model, response._request_id,
                  response.stop_reason)
-        return response, _tokens(response.usage)
+        return response, tokens

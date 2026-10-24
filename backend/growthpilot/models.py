@@ -16,6 +16,7 @@ from enum import StrEnum
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -49,18 +50,22 @@ class Role(StrEnum):
 
 class Platform(StrEnum):
     INSTAGRAM = "instagram"
-    PINTEREST = "pinterest"
     FACEBOOK = "facebook"
-    TIKTOK = "tiktok"
+    PINTEREST = "pinterest"
+    X = "x"
+    LINKEDIN = "linkedin"
     YOUTUBE = "youtube"
+    THREADS = "threads"
 
 
 PLATFORM_LABELS = {
     Platform.INSTAGRAM: "Instagram",
+    Platform.FACEBOOK: "Facebook Page",
     Platform.PINTEREST: "Pinterest",
-    Platform.FACEBOOK: "Facebook",
-    Platform.TIKTOK: "TikTok",
+    Platform.X: "X",
+    Platform.LINKEDIN: "LinkedIn",
     Platform.YOUTUBE: "YouTube",
+    Platform.THREADS: "Threads",
 }
 
 
@@ -94,6 +99,7 @@ class CampaignStatus(StrEnum):
 class RunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
+    PAUSED = "paused"
     AWAITING_APPROVAL = "awaiting_approval"
     COMPLETED = "completed"
     BLOCKED = "blocked"
@@ -149,6 +155,12 @@ class Workspace(Base):
     agent_max_steps: Mapped[int] = mapped_column(Integer, default=60)
     agent_token_budget: Mapped[int] = mapped_column(Integer, default=400_000)
     agent_timeout_minutes: Mapped[int] = mapped_column(Integer, default=20)
+    # Cost controls (USD, estimates from published provider prices; see growthpilot/usage.py).
+    run_budget_usd: Mapped[float] = mapped_column(default=0.50)  # per agent run
+    monthly_budget_usd: Mapped[float] = mapped_column(default=10.0)  # whole workspace, calendar month
+    approval_threshold_usd: Mapped[float] = mapped_column(default=0.25)  # one operation above this needs approval
+    search_requests_per_run: Mapped[int] = mapped_column(Integer, default=8)
+    search_requests_per_day: Mapped[int] = mapped_column(Integer, default=40)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     memberships: Mapped[list[Membership]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
@@ -246,6 +258,18 @@ class Brand(Base):
     prohibited_messaging: Mapped[list] = mapped_column(JSON, default=list)  # never allowed
     constraints: Mapped[str] = mapped_column(Text, default="")
     permitted_sources: Mapped[list] = mapped_column(JSON, default=list)  # domains research may fetch
+    # Editable marketing profile
+    content_pillars: Mapped[list] = mapped_column(JSON, default=list)
+    languages: Mapped[list] = mapped_column(JSON, default=list)  # ["English", "Kannada"]
+    marketing_objectives: Mapped[list] = mapped_column(JSON, default=list)
+    platform_preferences: Mapped[list] = mapped_column(JSON, default=list)  # ordered platform keys
+    posting_constraints: Mapped[dict] = mapped_column(JSON, default=dict)  # {"max_posts_per_day": 2, ...}
+    campaign_budget_usd: Mapped[float | None] = mapped_column()  # default AI/tool budget per campaign
+    fonts: Mapped[list] = mapped_column(JSON, default=list)
+    # Where profile facts came from: [{"field", "source_url", "retrieved_at", "note"}]
+    profile_sources: Mapped[list] = mapped_column(JSON, default=list)
+    # Catalogue connector: {"kind": "poojaloka_store_api", "base_url": ..., "last_synced_at": ..., "last_status": ...}
+    catalogue_source: Mapped[dict] = mapped_column(JSON, default=dict)
     logo_asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL", use_alter=True))
     is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -289,6 +313,21 @@ class Product(Base):
     image_asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Provenance for catalogue facts (ingested products). Manually entered products leave these empty.
+    source_url: Mapped[str | None] = mapped_column(String(1000))
+    source_ref: Mapped[str | None] = mapped_column(String(255))  # external id/slug at the source
+    retrieved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    mrp: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))  # list price shown by the source, if any
+    stock: Mapped[int | None] = mapped_column(Integer)  # None = unknown
+    allow_backorder: Mapped[bool | None] = mapped_column(Boolean)
+    variants: Mapped[list] = mapped_column(JSON, default=list)  # [{"label", "price", "stock"}]
+    image_urls: Mapped[list] = mapped_column(JSON, default=list)  # as published by the source
+    # product_photo (real photo of this item) | stock_photo (generic/illustrative) | none
+    image_kind: Mapped[str] = mapped_column(String(20), default="none")
+    name_local: Mapped[str] = mapped_column(String(255), default="")
+    flags: Mapped[dict] = mapped_column(JSON, default=dict)  # {"best_seller": true, ...} as the source labels them
+    delivery: Mapped[dict] = mapped_column(JSON, default=dict)  # {"available": false, "est_days": 2}
+    data_quality: Mapped[list] = mapped_column(JSON, default=list)  # [{"code","message"}]
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
@@ -300,8 +339,10 @@ class Asset(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     brand_id: Mapped[int | None] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"))
-    kind: Mapped[str] = mapped_column(String(20), default="image")  # image | logo
-    source: Mapped[str] = mapped_column(String(20), default="upload")  # upload | generated | placeholder
+    kind: Mapped[str] = mapped_column(String(20), default="image")  # image | logo | background
+    # upload | catalogue (real product photo from the store) | stock (generic image from the store) |
+    # rendered (composed by GrowthPilot) | ai_background (image provider) | placeholder
+    source: Mapped[str] = mapped_column(String(20), default="upload")
     filename: Mapped[str] = mapped_column(String(255))
     content_type: Mapped[str] = mapped_column(String(80))
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
@@ -310,6 +351,11 @@ class Asset(Base):
     storage_key: Mapped[str] = mapped_column(String(255))  # path under the asset store
     public_token: Mapped[str] = mapped_column(String(64), default=new_uuid, unique=True)
     alt_text: Mapped[str] = mapped_column(Text, default="")
+    origin_url: Mapped[str | None] = mapped_column(String(1000))
+    sha256: Mapped[str] = mapped_column(String(64), default="")
+    # Rendering provenance: template, platform format, product/photo ids, text layers, validation result.
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+    campaign_id: Mapped[int | None] = mapped_column(ForeignKey("campaigns.id", ondelete="SET NULL", use_alter=True))
     is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -399,6 +445,14 @@ class Campaign(Base):
     risks: Mapped[list] = mapped_column(JSON, default=list)
     assumptions: Mapped[list] = mapped_column(JSON, default=list)
     product_ids: Mapped[list] = mapped_column(JSON, default=list)
+    # Strategy (from the Strategy role): objectives, channel mix with reasons, budget allocation, metrics.
+    objective_metric: Mapped[str] = mapped_column(String(60), default="")
+    channel_mix: Mapped[list] = mapped_column(JSON, default=list)  # [{"platform","role","share","reason"}]
+    budget_usd: Mapped[float | None] = mapped_column()
+    budget_allocation: Mapped[list] = mapped_column(JSON, default=list)  # [{"item","usd","note"}]
+    baseline: Mapped[dict] = mapped_column(JSON, default=dict)
+    evaluation_window_days: Mapped[int] = mapped_column(Integer, default=7)
+    strategy: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), default=CampaignStatus.DRAFT)
     is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
@@ -449,6 +503,11 @@ class Experiment(Base):
     learnings: Mapped[str] = mapped_column(Text, default="")
     next_recommendation: Mapped[str] = mapped_column(Text, default="")
     data_source: Mapped[str] = mapped_column(String(20), default="")  # synthetic | real | mixed | none
+    intervention: Mapped[str] = mapped_column(Text, default="")
+    baseline: Mapped[dict] = mapped_column(JSON, default=dict)  # {"source","value","n","note"}
+    evaluation_window_days: Mapped[int] = mapped_column(Integer, default=7)
+    comparison_method: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[str] = mapped_column(String(20), default="")  # low | medium | high | none
     is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -469,7 +528,11 @@ class Recommendation(Base):
     evidence: Mapped[list] = mapped_column(JSON, default=list)  # [{"type","ref","summary"}]
     uncertainty: Mapped[str] = mapped_column(Text, default="")
     priority: Mapped[str] = mapped_column(String(10), default="medium")
-    status: Mapped[str] = mapped_column(String(20), default="open")  # open|accepted|dismissed
+    status: Mapped[str] = mapped_column(String(20), default="open")  # open|accepted|applied|dismissed
+    # A concrete change the agent proposes; applying it needs an owner's approval.
+    proposed_change: Mapped[dict] = mapped_column(JSON, default=dict)
+    decided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
     is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -498,6 +561,13 @@ class ChannelConnection(Base):
 
 class ContentItem(Base):
     __tablename__ = "content_items"
+    __table_args__ = (
+        # Database-enforced: anything approved or beyond must carry an approval of its *current* version.
+        CheckConstraint(
+            "status NOT IN ('approved', 'scheduled', 'publishing', 'published') OR "
+            "(approved_version IS NOT NULL AND approved_version = version)",
+            name="ck_content_approved_version_current"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     brand_id: Mapped[int] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"))
@@ -506,6 +576,9 @@ class ContentItem(Base):
     variant_label: Mapped[str] = mapped_column(String(20), default="")
     run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id", ondelete="SET NULL"))
     platform: Mapped[str] = mapped_column(String(20), default=Platform.INSTAGRAM)
+    # Platform variants share a master (the primary-platform item). Each variant has its own status,
+    # approval, schedule and publication record.
+    master_id: Mapped[int | None] = mapped_column(ForeignKey("content_items.id", ondelete="SET NULL"), index=True)
     content_type: Mapped[str] = mapped_column(String(20), default=ContentType.POST)
     pillar: Mapped[str] = mapped_column(String(120), default="")
     title: Mapped[str] = mapped_column(String(255), default="")
@@ -532,6 +605,8 @@ class ContentItem(Base):
     approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime)
     publish_authorized: Mapped[bool] = mapped_column(Boolean, default=False)  # owner explicitly allowed live publish
+    # sha256 over the approved snapshot plus the bytes of every attached asset (see services.content.approval_hash).
+    approved_hash: Mapped[str | None] = mapped_column(String(64))
     review_note: Mapped[str] = mapped_column(Text, default="")
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
     external_id: Mapped[str | None] = mapped_column(String(255))
@@ -645,6 +720,10 @@ class AgentRun(Base):
     max_steps: Mapped[int] = mapped_column(Integer, default=60)
     tokens_used: Mapped[int] = mapped_column(Integer, default=0)
     token_budget: Mapped[int] = mapped_column(Integer, default=400_000)
+    cost_usd: Mapped[float] = mapped_column(default=0.0)
+    cost_budget_usd: Mapped[float] = mapped_column(default=0.50)
+    pause_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    recoveries: Mapped[int] = mapped_column(Integer, default=0)  # automatic resumes after a worker crash
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
     outcome_summary: Mapped[str] = mapped_column(Text, default="")
@@ -669,6 +748,10 @@ class AgentStep(Base):
     seq: Mapped[int] = mapped_column(Integer)
     phase: Mapped[str] = mapped_column(String(20))  # observe|plan|tool|evaluate|replan|decision|approval|finish|error
     tool: Mapped[str | None] = mapped_column(String(60))
+    role: Mapped[str] = mapped_column(String(30), default="orchestrator")  # which specialist acted
+    effect: Mapped[str] = mapped_column(String(30), default="")  # read_only | local_write | cost | external_write | public_publish
+    cost_usd: Mapped[float] = mapped_column(default=0.0)
+    evidence_ids: Mapped[list] = mapped_column(JSON, default=list)
     message: Mapped[str] = mapped_column(Text, default="")  # human-readable summary of what/why
     input: Mapped[dict | None] = mapped_column(JSON)
     output: Mapped[dict | None] = mapped_column(JSON)
@@ -680,3 +763,56 @@ class AgentStep(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     run: Mapped[AgentRun] = relationship(back_populates="steps")
+
+
+# ── approvals, usage, caching ────────────────────────────────────────────
+
+
+class ApprovalRequest(Base):
+    """Non-content approvals: budget increases, paid promotion, account changes, strategy changes."""
+
+    __tablename__ = "approval_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id", ondelete="SET NULL"), index=True)
+    kind: Mapped[str] = mapped_column(String(30))  # budget | paid_promotion | account_change | strategy_change
+    title: Mapped[str] = mapped_column(String(255))
+    detail: Mapped[str] = mapped_column(Text, default="")
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending|approved|rejected
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    decided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
+    decision_note: Mapped[str] = mapped_column(Text, default="")
+
+
+class UsageRecord(Base):
+    """One billable (or free) provider call with its estimated cost."""
+
+    __tablename__ = "usage_records"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int | None] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id", ondelete="SET NULL"), index=True)
+    campaign_id: Mapped[int | None] = mapped_column(ForeignKey("campaigns.id", ondelete="SET NULL"))
+    provider: Mapped[str] = mapped_column(String(30))  # anthropic | gemini | brave | gemini-image | poojaloka
+    operation: Mapped[str] = mapped_column(String(60))
+    model: Mapped[str] = mapped_column(String(80), default="")
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    units: Mapped[int] = mapped_column(Integer, default=0)  # requests or images
+    cost_usd: Mapped[float] = mapped_column(default=0.0)
+    cached: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class CacheEntry(Base):
+    """Response cache for paid external lookups (web search). Keyed by a hash of provider + request."""
+
+    __tablename__ = "cache_entries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    provider: Mapped[str] = mapped_column(String(30))
+    request: Mapped[dict] = mapped_column(JSON, default=dict)
+    response: Mapped[dict | list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)

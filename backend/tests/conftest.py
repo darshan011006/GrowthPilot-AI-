@@ -23,8 +23,9 @@ def _configure(monkeypatch, tmp_path, mode: str, **extra):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
     monkeypatch.setenv("RUN_WORKER_IN_PROCESS", "false")
     monkeypatch.setenv("BASE_URL", extra.pop("BASE_URL", "http://testserver"))
-    for k in ("LLM_API_KEY", "ANTHROPIC_API_KEY", "SEARCH_API_KEY", "META_APP_ID", "META_APP_SECRET",
-              "LIVE_PUBLISHING_ENABLED", "ALLOW_INSECURE_WEBHOOKS"):
+    for k in ("LLM_API_KEY", "ANTHROPIC_API_KEY", "SEARCH_API_KEY", "BRAVE_SEARCH_API_KEY", "GEMINI_API_KEY",
+              "LLM_PROVIDER", "IMAGE_GENERATION_PROVIDER", "IMAGE_GENERATION_API_KEY", "META_APP_ID",
+              "META_APP_SECRET", "LIVE_PUBLISHING_ENABLED", "ALLOW_INSECURE_WEBHOOKS", "DEMO_ALLOW_CATALOGUE_SYNC"):
         monkeypatch.delenv(k, raising=False)
     for k, v in extra.items():
         monkeypatch.setenv(k, v)
@@ -101,7 +102,16 @@ def demo(monkeypatch, tmp_path):
 
 @pytest.fixture
 def demo_seeded(demo):
-    r = demo.post("/api/demo/reset", json={"confirm": "RESET"})
+    """The fictional Aranya furniture brand (regression fixtures with fixed products)."""
+    r = demo.post("/api/demo/reset", json={"confirm": "RESET", "brand": "aranya"})
+    assert r.status_code == 200, r.text
+    return demo
+
+
+@pytest.fixture
+def poojaloka_seeded(demo):
+    """The primary demo: Poojaloka's real catalogue snapshot plus labelled fixtures."""
+    r = demo.post("/api/demo/reset", json={"confirm": "RESET", "brand": "poojaloka"})
     assert r.status_code == 200, r.text
     return demo
 

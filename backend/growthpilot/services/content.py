@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import datetime, timedelta
 
@@ -23,6 +24,7 @@ from .. import audit
 from ..adapters import AdapterError, get_adapter
 from ..config import get_settings
 from ..models import (
+    Asset,
     ChannelConnection,
     ConnectionStatus,
     ContentItem,
@@ -72,7 +74,31 @@ def _clear_approval(item: ContentItem) -> None:
     item.approved_by = None
     item.approved_at = None
     item.approved_version = None
+    item.approved_hash = None
     item.publish_authorized = False
+
+
+def approval_hash(db: Session, item: ContentItem) -> str:
+    """sha256 over the exact text, platform, type and the bytes of every attached image."""
+    from .assets import store
+
+    parts = [json.dumps(snapshot(item), sort_keys=True, default=str), item.platform, item.content_type]
+    ids = ([item.asset_id] if item.asset_id else []) + list(item.slide_asset_ids or [])
+    for aid in ids:
+        a = db.get(Asset, aid)
+        if a is None:
+            parts.append(f"missing:{aid}")
+            continue
+        try:
+            parts.append(hashlib.sha256(store().path(a.storage_key).read_bytes()).hexdigest())
+        except (OSError, WorkflowError):
+            parts.append(f"unreadable:{aid}")
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()
+
+
+def approval_intact(db: Session, item: ContentItem) -> bool:
+    return bool(item.approved_hash) and item.approved_version == item.version and \
+        approval_hash(db, item) == item.approved_hash
 
 
 def update(db: Session, item: ContentItem, changes: dict, *, user_id: int | None, role: str, source: str = "human",
@@ -143,15 +169,16 @@ def approve(db: Session, item: ContentItem, *, user_id: int, role: str, version:
         raise WorkflowError("Validation failed: " + "; ".join(c.message for c in report.failures[:5]))
     if report.warnings and not acknowledge_warnings:
         raise WorkflowError(f"{len(report.warnings)} warning(s) need acknowledging before approval.")
-    item.status = ContentStatus.APPROVED
     item.approved_by = user_id
     item.approved_at = utcnow()
     item.approved_version = item.version
+    item.approved_hash = approval_hash(db, item)
+    item.status = ContentStatus.APPROVED
     item.publish_authorized = bool(authorize_publish)
     item.review_note = ""
     audit.record(db, "content.approved", workspace_id=item.workspace_id, user_id=user_id, target_type="content",
                  target_id=item.id, ip=ip, version=item.version, warnings=len(report.warnings),
-                 publish_authorized=item.publish_authorized)
+                 publish_authorized=item.publish_authorized, platform=item.platform, approved_hash=item.approved_hash)
 
 
 def request_changes(db: Session, item: ContentItem, *, user_id: int, role: str, note: str,
@@ -212,6 +239,8 @@ def schedule(db: Session, item: ContentItem, connection: ChannelConnection, when
         raise WorkflowError("Only approved content can be scheduled.")
     if item.approved_version != item.version or item.approved_by is None:
         raise WorkflowError("This version hasn't been approved by a person.")
+    if not approval_intact(db, item):
+        raise WorkflowError("The text or media changed after approval; it needs approval again.")
     if connection.workspace_id != item.workspace_id:
         raise WorkflowError("Connection not found.")
     try:

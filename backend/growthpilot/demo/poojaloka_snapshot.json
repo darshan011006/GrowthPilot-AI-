@@ -1,0 +1,1709 @@
+{
+ "meta": {
+  "source": "https://poojaloka.com/ (public storefront API https://api.poojaloka.com/api)",
+  "retrieved_at": "2026-10-24T14:20:00Z",
+  "endpoints": [
+   "/api/products",
+   "/api/products/{slug}",
+   "/api/categories",
+   "/api/festivals",
+   "/api/hero",
+   "/api/articles"
+  ],
+  "note": "Curated subset (40 of 2877 products) captured once for offline demo and tests. Prices, stock and offers change; live mode re-fetches before use.",
+  "catalogue_total": 2877,
+  "image_audit": {
+   "products_total": 2877,
+   "stock_photo_hosts": {
+    "cdn.pixabay.com": 2876
+   },
+   "own_upload_hosts": {
+    "billing.poojaloka.com": 1
+   }
+  }
+ },
+ "hero": {
+  "mediaType": "image",
+  "mediaUrl": "https://cdn.pixabay.com/photo/2017/09/22/08/18/diwali-festival-2774745_1280.jpg",
+  "eyebrow": "Since 1980",
+  "headline": "Bringing Devotion Home",
+  "headlineKn": "",
+  "subtext": "Authentic pooja essentials, divine idols, brass collections & spiritual decor — curated by artisans, delivered with care to your sacred space.",
+  "subtextKn": "",
+  "ctaPrimaryText": "Shop Now",
+  "ctaPrimaryLink": "/shop",
+  "ctaSecondaryText": "Explore Collections",
+  "ctaSecondaryLink": "/festivals"
+ },
+ "categories": [
+  {
+   "id": "cmuo2qyrz002c13m552ida6dp",
+   "name": "Pooja Essentials",
+   "nameKn": "ಪೂಜಾ ಸಾಮಗ್ರಿಗಳು",
+   "slug": "pooja-essentials",
+   "image": "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg",
+   "order": 0
+  },
+  {
+   "id": "cmuo2qys1002d13m5q3cv3bl3",
+   "name": "Ayurvedic Items",
+   "nameKn": "ಆಯುರ್ವೇದ ವಸ್ತುಗಳು",
+   "slug": "ayurvedic-items",
+   "image": "https://cdn.pixabay.com/photo/2015/05/07/11/26/ayurvedic-756352_1280.jpg",
+   "order": 1
+  },
+  {
+   "id": "cmuo2qys7002e13m5d6xpmbv4",
+   "name": "Brass Collection",
+   "nameKn": "ಹಿತ್ತಾಳೆ ಸಂಗ್ರಹ",
+   "slug": "brass-collection",
+   "image": "https://cdn.pixabay.com/photo/2015/11/27/06/18/bells-1065015_1280.jpg",
+   "order": 2
+  },
+  {
+   "id": "cmuo2qysb002f13m5jmldt482",
+   "name": "Fancy Items",
+   "nameKn": "ಅಲಂಕಾರಿಕ ವಸ್ತುಗಳು",
+   "slug": "fancy-items",
+   "image": "https://cdn.pixabay.com/photo/2014/05/15/15/06/diwali-344942_1280.jpg",
+   "order": 3
+  },
+  {
+   "id": "cmuo2qysc002g13m5v12qw1rs",
+   "name": "Grocery Items",
+   "nameKn": "ದಿನಸಿ ವಸ್ತುಗಳು",
+   "slug": "grocery-items",
+   "image": "https://cdn.pixabay.com/photo/2015/08/06/07/46/spices-877518_1280.jpg",
+   "order": 4
+  },
+  {
+   "id": "cmuo2qysg002h13m537xzh07z",
+   "name": "Cloth & Dhoti",
+   "nameKn": "ಬಟ್ಟೆ ಮತ್ತು ಪಂಚೆ",
+   "slug": "cloth-dhoti",
+   "image": "https://cdn.pixabay.com/photo/2019/05/22/10/58/fabric-4221225_1280.jpg",
+   "order": 5
+  },
+  {
+   "id": "cmuo2qysj002i13m5s25cr5td",
+   "name": "Disposable Items",
+   "nameKn": "ಬಿಸಾಡಬಹುದಾದ ವಸ್ತುಗಳು",
+   "slug": "disposable-items",
+   "image": "https://cdn.pixabay.com/photo/2014/11/17/20/46/plate-535219_1280.jpg",
+   "order": 6
+  },
+  {
+   "id": "cmuo2qysm002j13m50up7m3xu",
+   "name": "Steel Items",
+   "nameKn": "ಸ್ಟೀಲ್ ವಸ್ತುಗಳು",
+   "slug": "steel-items",
+   "image": "https://cdn.pixabay.com/photo/2016/06/14/19/37/utensils-1457356_1280.jpg",
+   "order": 7
+  },
+  {
+   "id": "cmuo2qysq002k13m56hkw7pan",
+   "name": "Pooja Oils",
+   "nameKn": "ಪೂಜಾ ಎಣ್ಣೆಗಳು",
+   "slug": "pooja-oils",
+   "image": "https://cdn.pixabay.com/photo/2015/08/06/07/46/spices-877518_1280.jpg",
+   "order": 8
+  },
+  {
+   "id": "cmuo2qysr002l13m5878yon75",
+   "name": "Copper Items",
+   "nameKn": "ತಾಮ್ರದ ವಸ್ತುಗಳು",
+   "slug": "copper-items",
+   "image": "https://cdn.pixabay.com/photo/2016/06/14/19/37/utensils-1457356_1280.jpg",
+   "order": 9
+  },
+  {
+   "id": "cmuo2qyst002m13m5q9bfmunq",
+   "name": "General Items",
+   "nameKn": "ಸಾಮಾನ್ಯ ವಸ್ತುಗಳು",
+   "slug": "general-items",
+   "image": "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg",
+   "order": 10
+  },
+  {
+   "id": "cmuo2qysx002n13m50yojvk3k",
+   "name": "Wood Items",
+   "nameKn": "ಮರದ ವಸ್ತುಗಳು",
+   "slug": "wood-items",
+   "image": "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg",
+   "order": 11
+  },
+  {
+   "id": "cmuo2qyt1002o13m5cbvvz545",
+   "name": "Idols",
+   "nameKn": "ವಿಗ್ರಹಗಳು",
+   "slug": "idols",
+   "image": "https://cdn.pixabay.com/photo/2018/02/03/23/17/ganesha-3128714_1280.png",
+   "order": 12
+  },
+  {
+   "id": "cmuo2qyt5002p13m52jdupc7r",
+   "name": "Mud Items",
+   "nameKn": "ಮಣ್ಣಿನ ವಸ್ತುಗಳು",
+   "slug": "mud-items",
+   "image": "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg",
+   "order": 13
+  },
+  {
+   "id": "cmuo2qyt9002q13m5cu15uqm0",
+   "name": "Stone & Gems",
+   "nameKn": "ಕಲ್ಲು ಮತ್ತು ರತ್ನಗಳು",
+   "slug": "stone-gems",
+   "image": "https://cdn.pixabay.com/photo/2015/11/27/06/18/bells-1065015_1280.jpg",
+   "order": 14
+  },
+  {
+   "id": "cmuo2qytd002r13m5uymlrogd",
+   "name": "Ceremonial Items",
+   "nameKn": "ಧಾರ್ಮಿಕ ವಿಧಿ ವಸ್ತುಗಳು",
+   "slug": "ceremonial-items",
+   "image": "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg",
+   "order": 15
+  },
+  {
+   "id": "cmuo2qytj002s13m5gmc91v9u",
+   "name": "Books",
+   "nameKn": "ಪುಸ್ತಕಗಳು",
+   "slug": "books",
+   "image": "https://cdn.pixabay.com/photo/2021/01/21/16/49/books-5937823_1280.jpg",
+   "order": 16
+  },
+  {
+   "id": "cmuo2qytn002t13m5j046z4oe",
+   "name": "Photo Stickers",
+   "nameKn": "ಫೋಟೋ ಸ್ಟಿಕ್ಕರ್‌ಗಳು",
+   "slug": "photo-stickers",
+   "image": "https://cdn.pixabay.com/photo/2014/05/15/15/06/diwali-344942_1280.jpg",
+   "order": 17
+  },
+  {
+   "id": "cmuo2qyts002u13m56mt063kl",
+   "name": "Perishable Items",
+   "nameKn": "ನಾಶವಾಗುವ ವಸ್ತುಗಳು",
+   "slug": "perishable-items",
+   "image": "https://cdn.pixabay.com/photo/2015/08/06/07/46/spices-877518_1280.jpg",
+   "order": 18
+  },
+  {
+   "id": "cmuo2qytw002v13m5ffifhlxo",
+   "name": "Iron Items",
+   "nameKn": "ಕಬ್ಬಿಣದ ವಸ್ತುಗಳು",
+   "slug": "iron-items",
+   "image": "https://cdn.pixabay.com/photo/2016/06/14/19/37/utensils-1457356_1280.jpg",
+   "order": 19
+  },
+  {
+   "id": "cmuo2qyu1002w13m5hfi7e8q8",
+   "name": "German Silver Items",
+   "nameKn": "ಜರ್ಮನ್ ಸಿಲ್ವರ್ ವಸ್ತುಗಳು",
+   "slug": "german-silver-items",
+   "image": "https://cdn.pixabay.com/photo/2016/06/14/19/37/utensils-1457356_1280.jpg",
+   "order": 20
+  }
+ ],
+ "festivals": [
+  {
+   "id": "cmuo2qyu5002x13m5ychd7xxz",
+   "name": "Krishna Janmashtami",
+   "nameKn": "ಕೃಷ್ಣ ಜನ್ಮಾಷ್ಟಮಿ",
+   "slug": "krishna-janmashtami",
+   "image": "https://cdn.pixabay.com/photo/2015/11/27/06/18/bells-1065015_1280.jpg",
+   "importance": "Celebrates the birth of Lord Krishna, the eighth avatar of Vishnu, marking the triumph of dharma over adharma.",
+   "poojaVidhi": "A midnight abhishekam is performed for the Bala Krishna idol with milk, curd, honey, and tulsi, followed by aarti and prasad distribution.",
+   "origin": "Observed on the Ashtami of Krishna Paksha in Bhadrapada month, marking Krishna's birth in Mathura over 5,000 years ago.",
+   "itemsNeeded": [
+    "Bala Krishna idol",
+    "Tulsi leaves",
+    "Panchamrit",
+    "Butter",
+    "Flute",
+    "Peacock feather",
+    "Diyas"
+   ],
+   "date": null
+  },
+  {
+   "id": "cmuo2qyua002y13m5zwq9l6u6",
+   "name": "Navaratri",
+   "nameKn": "ನವರಾತ್ರಿ",
+   "slug": "navaratri",
+   "image": "https://cdn.pixabay.com/photo/2015/08/06/07/46/spices-877518_1280.jpg",
+   "importance": "Nine nights honoring the nine forms of Goddess Durga, celebrating the victory of good over evil.",
+   "poojaVidhi": "Kalash sthapana on day one, followed by daily alankaram of the goddess and Golu doll displays, culminating in Vijayadashami.",
+   "origin": "Rooted in the legend of Durga's battle with the demon Mahishasura across nine nights.",
+   "itemsNeeded": [
+    "Kalash",
+    "Mango leaves",
+    "Coconut",
+    "Kumkum",
+    "Golu dolls",
+    "Nine-yard silk"
+   ],
+   "date": null
+  },
+  {
+   "id": "cmuo2qyue002z13m5qfw12r3f",
+   "name": "Deepavali",
+   "nameKn": "ದೀಪಾವಳಿ",
+   "slug": "deepavali",
+   "image": "https://cdn.pixabay.com/photo/2017/09/22/08/18/diwali-festival-2774745_1280.jpg",
+   "importance": "The festival of lights celebrating Lord Rama's return to Ayodhya and Goddess Lakshmi's blessings of prosperity.",
+   "poojaVidhi": "Lakshmi-Ganesha puja performed at dusk with diyas lit around the home, followed by exchange of sweets.",
+   "origin": "Marks Rama's homecoming after 14 years of exile and the victory of light over darkness.",
+   "itemsNeeded": [
+    "Lakshmi-Ganesha idols",
+    "Clay diyas",
+    "Rangoli colors",
+    "Cotton wicks",
+    "Sesame oil"
+   ],
+   "date": null
+  }
+ ],
+ "articles": [
+  {
+   "id": "cmuo2r0xx03gt13m5p7uz6vok",
+   "title": "How to Choose the Right Krishna Idol for Your Home",
+   "slug": "how-to-choose-right-krishna-idol",
+   "image": "https://cdn.pixabay.com/photo/2015/11/27/06/18/bells-1065015_1280.jpg",
+   "excerpt": "A guide to selecting the ideal material, size and posture for your home altar.",
+   "body": "Choosing a Krishna idol depends on your altar space, the material (brass, panchaloha, or marble), and the posture — standing, seated, or with flute. Brass idols are easiest to maintain with daily abhishekam, while panchaloha idols are prized for ritual worship. Consider the idol's gaze direction and proportion to your altar before purchasing.",
+   "createdAt": "2026-09-30T12:21:28.581Z"
+  },
+  {
+   "id": "cmuo2r0xx03gu13m5sv98eysg",
+   "title": "Importance of Kumkum in Daily Pooja",
+   "slug": "importance-of-kumkum-daily-pooja",
+   "image": "https://cdn.pixabay.com/photo/2014/05/15/15/06/diwali-344942_1280.jpg",
+   "excerpt": "Understanding the spiritual and cultural significance of kumkum in Hindu worship.",
+   "body": "Kumkum, made from turmeric and lime, symbolizes auspiciousness and is applied during daily worship, festivals and rites of passage. Its red hue is associated with Goddess Lakshmi and vitality, and applying it to the deity's forehead is considered essential in most household pooja routines.",
+   "createdAt": "2026-09-30T12:21:28.581Z"
+  },
+  {
+   "id": "cmuo2r0xx03gv13m592kpbged",
+   "title": "Vastu Tips for Pooja Room & Sacred Spaces",
+   "slug": "vastu-tips-pooja-room",
+   "image": "https://cdn.pixabay.com/photo/2015/03/09/05/31/incense-665068_1280.jpg",
+   "excerpt": "Simple placement principles to bring positive energy to your prayer space.",
+   "body": "The pooja room ideally faces east or northeast, keeping idols away from the bathroom or bedroom walls. Lamps should be lit facing east, and the room should remain clutter-free with fresh flowers replaced regularly for optimal energy flow.",
+   "createdAt": "2026-09-30T12:21:28.581Z"
+  },
+  {
+   "id": "cmuo2r0xx03gw13m5wrldqhcy",
+   "title": "Complete Guide for Varamahalakshmi Pooja",
+   "slug": "complete-guide-varamahalakshmi-pooja",
+   "image": "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg",
+   "excerpt": "Everything you need — from the kalash setup to the concluding aarti.",
+   "body": "Varamahalakshmi Pooja is performed on the Friday before the full moon in Shravana month. It begins with kalash sthapana representing the goddess, followed by decorating with a silk saree, offering fruits and sweets, and concluding with an elaborate aarti and distribution of prasad and gifts to married women.",
+   "createdAt": "2026-09-30T12:21:28.581Z"
+  }
+ ],
+ "products": [
+  {
+   "id": "cmuo2qz1t02h013m5zuawl2vc",
+   "name": "Vaibhava Lakshmi Vrat (Kannada)",
+   "nameKn": null,
+   "slug": "vaibhava-lakshmi-vrat-kannada-bk0022",
+   "price": 15,
+   "mrp": 15,
+   "images": [
+    "https://cdn.pixabay.com/photo/2021/01/21/16/49/books-5937823_1280.jpg"
+   ],
+   "stock": 66,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Books",
+    "nameKn": "ಪುಸ್ತಕಗಳು",
+    "slug": "books"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Vaibhava Lakshmi Vrat (Kannada) — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:18:49Z"
+  },
+  {
+   "id": "cmuo2qyys01cr13m555tx5f8j",
+   "name": "Kashi Ashtagandha Chandan",
+   "nameKn": null,
+   "slug": "kashi-ashtagandha-chandan-8905694503566",
+   "price": 25,
+   "mrp": 25,
+   "images": [
+    "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg"
+   ],
+   "stock": 84,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Pooja Essentials",
+    "nameKn": "ಪೂಜಾ ಸಾಮಗ್ರಿಗಳು",
+    "slug": "pooja-essentials"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Kashi Ashtagandha Chandan — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:18:50Z"
+  },
+  {
+   "id": "cmuo2qyyt01d713m5f60kt7ub",
+   "name": "Kasturi Haldi Powder (lalas)",
+   "nameKn": null,
+   "slug": "kasturi-haldi-powder-lalas-50-gms-89080219917911894950",
+   "price": 75,
+   "mrp": 75,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/08/06/07/46/spices-877518_1280.jpg"
+   ],
+   "stock": 11,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ayurvedic Items",
+    "nameKn": "ಆಯುರ್ವೇದ ವಸ್ತುಗಳು",
+    "slug": "ayurvedic-items"
+   },
+   "storeCount": 0,
+   "variants": [
+    {
+     "id": "cmuo2r01g02vr13m5rmgaqa34",
+     "label": "50g",
+     "price": 75,
+     "stock": 11
+    },
+    {
+     "id": "cmuo2r01g02vs13m5o4cl5a9v",
+     "label": "50g",
+     "price": 65,
+     "stock": 0
+    }
+   ],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Kasturi Haldi Powder (lalas) — from Poojaloka's own store inventory. Choose your quantity above. Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 3,
+   "_retrieved_at": "2026-10-24T14:18:51Z"
+  },
+  {
+   "id": "cmuo2qyyw01hc13m5oe3vlw9n",
+   "name": "Kumkumadhi Lepam (Amrita drugs) 25 Gms",
+   "nameKn": null,
+   "slug": "kumkumadhi-lepam-amrita-drugs-25-gms-ay0030",
+   "price": 190,
+   "mrp": 190,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/05/07/11/26/ayurvedic-756352_1280.jpg"
+   ],
+   "stock": 1,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ayurvedic Items",
+    "nameKn": "ಆಯುರ್ವೇದ ವಸ್ತುಗಳು",
+    "slug": "ayurvedic-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Kumkumadhi Lepam (Amrita drugs) 25 Gms — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:18:52Z"
+  },
+  {
+   "id": "cmuo2qyyw01he13m53b101lry",
+   "name": "Kumkumadi Taila(BVP)25Ml",
+   "nameKn": null,
+   "slug": "kumkumadi-taila-bvp-25ml-8904112800133",
+   "price": 250,
+   "mrp": 250,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/05/07/11/26/ayurvedic-756352_1280.jpg"
+   ],
+   "stock": 5,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ayurvedic Items",
+    "nameKn": "ಆಯುರ್ವೇದ ವಸ್ತುಗಳು",
+    "slug": "ayurvedic-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Kumkumadi Taila(BVP)25Ml — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 3,
+   "_retrieved_at": "2026-10-24T14:18:53Z"
+  },
+  {
+   "id": "cmuo2qyyw01hf13m5xwuoucg2",
+   "name": "Kumkumadi Tailam (Vyas) 15 Ml",
+   "nameKn": null,
+   "slug": "kumkumadi-tailam-vyas-15-ml-ay0048",
+   "price": 160,
+   "mrp": 160,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/08/06/07/46/spices-877518_1280.jpg"
+   ],
+   "stock": 3,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ayurvedic Items",
+    "nameKn": "ಆಯುರ್ವೇದ ವಸ್ತುಗಳು",
+    "slug": "ayurvedic-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Kumkumadi Tailam (Vyas) 15 Ml — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:18:54Z"
+  },
+  {
+   "id": "cmuo2qyyy01lx13m5n8sfpcbk",
+   "name": "Matki Diya 1 Box 125",
+   "nameKn": null,
+   "slug": "matki-diya-1-box-125-md0044",
+   "price": 125,
+   "mrp": 140,
+   "images": [
+    "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg"
+   ],
+   "stock": 24,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Mud Items",
+    "nameKn": "ಮಣ್ಣಿನ ವಸ್ತುಗಳು",
+    "slug": "mud-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Matki Diya 1 Box 125 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": {
+    "id": "cmuo2qyue002z13m5qfw12r3f",
+    "name": "Deepavali",
+    "nameKn": "ದೀಪಾವಳಿ",
+    "slug": "deepavali",
+    "image": "https://cdn.pixabay.com/photo/2017/09/22/08/18/diwali-festival-2774745_1280.jpg",
+    "importance": "The festival of lights celebrating Lord Rama's return to Ayodhya and Goddess Lakshmi's blessings of prosperity.",
+    "poojaVidhi": "Lakshmi-Ganesha puja performed at dusk with diyas lit around the home, followed by exchange of sweets.",
+    "origin": "Marks Rama's homecoming after 14 years of exile and the victory of light over darkness.",
+    "itemsNeeded": "[\"Lakshmi-Ganesha idols\",\"Clay diyas\",\"Rangoli colors\",\"Cotton wicks\",\"Sesame oil\"]",
+    "date": null
+   },
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:18:55Z"
+  },
+  {
+   "id": "cmuo2qyyz01me13m5fo99sgx4",
+   "name": "Meru Brass Solid 1.5X1.5",
+   "nameKn": null,
+   "slug": "meru-brass-solid-1-5x1-5-id0006",
+   "price": 275,
+   "mrp": 320,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/11/27/06/18/bells-1065015_1280.jpg"
+   ],
+   "stock": 23,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Idols",
+    "nameKn": "ವಿಗ್ರಹಗಳು",
+    "slug": "idols"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Meru Brass Solid 1.5X1.5 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:18:57Z"
+  },
+  {
+   "id": "cmuo2qyyz01mf13m5me2swbuz",
+   "name": "Meru Brass Solid 1X1",
+   "nameKn": null,
+   "slug": "meru-brass-solid-1x1-id0005",
+   "price": 150,
+   "mrp": 200,
+   "images": [
+    "https://cdn.pixabay.com/photo/2018/02/03/23/17/ganesha-3128714_1280.png"
+   ],
+   "stock": 24,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Idols",
+    "nameKn": "ವಿಗ್ರಹಗಳು",
+    "slug": "idols"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Meru Brass Solid 1X1 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 3,
+   "_retrieved_at": "2026-10-24T14:18:58Z"
+  },
+  {
+   "id": "cmuo2qyyz01mg13m57cnx4nmu",
+   "name": "Meru Brass Solid 2X2",
+   "nameKn": null,
+   "slug": "meru-brass-solid-2x2-id0007",
+   "price": 600,
+   "mrp": 700,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/11/27/06/18/bells-1065015_1280.jpg"
+   ],
+   "stock": 10,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Idols",
+    "nameKn": "ವಿಗ್ರಹಗಳು",
+    "slug": "idols"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Meru Brass Solid 2X2 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:18:59Z"
+  },
+  {
+   "id": "cmuo2qyyz01mh13m56m9ijefy",
+   "name": "Meru Brass Solid 3X3",
+   "nameKn": null,
+   "slug": "meru-brass-solid-3x3-id0008",
+   "price": 1200,
+   "mrp": 1344,
+   "images": [
+    "https://cdn.pixabay.com/photo/2018/02/03/23/17/ganesha-3128714_1280.png"
+   ],
+   "stock": 6,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Idols",
+    "nameKn": "ವಿಗ್ರಹಗಳು",
+    "slug": "idols"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Meru Brass Solid 3X3 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 3,
+   "_retrieved_at": "2026-10-24T14:19:00Z"
+  },
+  {
+   "id": "cmuo2qyxn010213m52nf0a6r1",
+   "name": "Glass Deepa/Lamp 3",
+   "nameKn": null,
+   "slug": "glass-deepa-lamp-3-br0791",
+   "price": 560,
+   "mrp": 649,
+   "images": [
+    "https://cdn.pixabay.com/photo/2018/02/03/23/17/ganesha-3128714_1280.png"
+   ],
+   "stock": 12,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Brass Collection",
+    "nameKn": "ಹಿತ್ತಾಳೆ ಸಂಗ್ರಹ",
+    "slug": "brass-collection"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Glass Deepa/Lamp 3 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": {
+    "id": "cmuo2qyue002z13m5qfw12r3f",
+    "name": "Deepavali",
+    "nameKn": "ದೀಪಾವಳಿ",
+    "slug": "deepavali",
+    "image": "https://cdn.pixabay.com/photo/2017/09/22/08/18/diwali-festival-2774745_1280.jpg",
+    "importance": "The festival of lights celebrating Lord Rama's return to Ayodhya and Goddess Lakshmi's blessings of prosperity.",
+    "poojaVidhi": "Lakshmi-Ganesha puja performed at dusk with diyas lit around the home, followed by exchange of sweets.",
+    "origin": "Marks Rama's homecoming after 14 years of exile and the victory of light over darkness.",
+    "itemsNeeded": "[\"Lakshmi-Ganesha idols\",\"Clay diyas\",\"Rangoli colors\",\"Cotton wicks\",\"Sesame oil\"]",
+    "date": null
+   },
+   "deliveryAvailable": false,
+   "estDeliveryDays": 3,
+   "_retrieved_at": "2026-10-24T14:19:01Z"
+  },
+  {
+   "id": "cmuo2qyxp013r13m5qf41sdc3",
+   "name": "Hari Leela\\Agarbatti 175 1 Pkt",
+   "nameKn": null,
+   "slug": "hari-leela-agarbatti-175-1-pkt-8908018903059",
+   "price": 175,
+   "mrp": 175,
+   "images": [
+    "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg"
+   ],
+   "stock": 1,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Pooja Essentials",
+    "nameKn": "ಪೂಜಾ ಸಾಮಗ್ರಿಗಳು",
+    "slug": "pooja-essentials"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Hari Leela\\Agarbatti 175 1 Pkt — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": {
+    "id": "cmuo2qyue002z13m5qfw12r3f",
+    "name": "Deepavali",
+    "nameKn": "ದೀಪಾವಳಿ",
+    "slug": "deepavali",
+    "image": "https://cdn.pixabay.com/photo/2017/09/22/08/18/diwali-festival-2774745_1280.jpg",
+    "importance": "The festival of lights celebrating Lord Rama's return to Ayodhya and Goddess Lakshmi's blessings of prosperity.",
+    "poojaVidhi": "Lakshmi-Ganesha puja performed at dusk with diyas lit around the home, followed by exchange of sweets.",
+    "origin": "Marks Rama's homecoming after 14 years of exile and the victory of light over darkness.",
+    "itemsNeeded": "[\"Lakshmi-Ganesha idols\",\"Clay diyas\",\"Rangoli colors\",\"Cotton wicks\",\"Sesame oil\"]",
+    "date": null
+   },
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:02Z"
+  },
+  {
+   "id": "cmuo2qywa00k713m5qg7vb57d",
+   "name": "Brass Pooja Petti Size 6",
+   "nameKn": null,
+   "slug": "brass-pooja-petti-size-6-br2657",
+   "price": 4600,
+   "mrp": 5000,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/11/27/06/18/bells-1065015_1280.jpg"
+   ],
+   "stock": 1,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": true,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Brass Collection",
+    "nameKn": "ಹಿತ್ತಾಳೆ ಸಂಗ್ರಹ",
+    "slug": "brass-collection"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Brass Pooja Petti Size 6 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:19:03Z"
+  },
+  {
+   "id": "cmuo2qywb00lg13m51tn2i3rk",
+   "name": "Camphor/Gede Karpura 40 1 Pkt",
+   "nameKn": null,
+   "slug": "camphor-gede-karpura-40-1-pkt-pj0154",
+   "price": 40,
+   "mrp": 45,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/03/09/05/31/incense-665068_1280.jpg"
+   ],
+   "stock": 6,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Pooja Essentials",
+    "nameKn": "ಪೂಜಾ ಸಾಮಗ್ರಿಗಳು",
+    "slug": "pooja-essentials"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Camphor/Gede Karpura 40 1 Pkt — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:05Z"
+  },
+  {
+   "id": "cmuo2qyv2003013m5r98rgegw",
+   "name": "Brass Puttu Parat S-10",
+   "nameKn": null,
+   "slug": "brass-puttu-parat-s-10-br1795",
+   "price": 650,
+   "mrp": 750,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/11/27/06/18/bells-1065015_1280.jpg"
+   ],
+   "stock": 10,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Brass Collection",
+    "nameKn": "ಹಿತ್ತಾಳೆ ಸಂಗ್ರಹ",
+    "slug": "brass-collection"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Brass Puttu Parat S-10 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 3,
+   "_retrieved_at": "2026-10-24T14:19:06Z"
+  },
+  {
+   "id": "cmuo2qyv2003113m53wdaeqvc",
+   "name": "Brass Puttu Parat S-11",
+   "nameKn": null,
+   "slug": "brass-puttu-parat-s-11-br1796",
+   "price": 750,
+   "mrp": 850,
+   "images": [
+    "https://cdn.pixabay.com/photo/2016/06/14/19/37/utensils-1457356_1280.jpg"
+   ],
+   "stock": 10,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Brass Collection",
+    "nameKn": "ಹಿತ್ತಾಳೆ ಸಂಗ್ರಹ",
+    "slug": "brass-collection"
+   },
+   "storeCount": 3,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Brass Puttu Parat S-11 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": true,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:07Z"
+  },
+  {
+   "id": "cmuo2qyv2003213m52ohf4u3k",
+   "name": "Brass Puttu Parat S-12",
+   "nameKn": null,
+   "slug": "brass-puttu-parat-s-12-br1797",
+   "price": 925,
+   "mrp": 1025,
+   "images": [
+    "https://cdn.pixabay.com/photo/2018/02/03/23/17/ganesha-3128714_1280.png"
+   ],
+   "stock": 10,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Brass Collection",
+    "nameKn": "ಹಿತ್ತಾಳೆ ಸಂಗ್ರಹ",
+    "slug": "brass-collection"
+   },
+   "storeCount": 3,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Brass Puttu Parat S-12 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": true,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:08Z"
+  },
+  {
+   "id": "cmuo2qyv2003313m5wdcq0p1c",
+   "name": "Brass Puttu Parat S-13",
+   "nameKn": null,
+   "slug": "brass-puttu-parat-s-13-br1798",
+   "price": 1075,
+   "mrp": 1200,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/11/27/06/18/bells-1065015_1280.jpg"
+   ],
+   "stock": 10,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": true,
+   "allowBackorder": true,
+   "category": {
+    "name": "Brass Collection",
+    "nameKn": "ಹಿತ್ತಾಳೆ ಸಂಗ್ರಹ",
+    "slug": "brass-collection"
+   },
+   "storeCount": 2,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Brass Puttu Parat S-13 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": true,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:09Z"
+  },
+  {
+   "id": "cmuo2qyv2003413m5iktrpgh6",
+   "name": "Brass Puttu Parat S-14",
+   "nameKn": null,
+   "slug": "brass-puttu-parat-s-14-br1799",
+   "price": 1225,
+   "mrp": 1300,
+   "images": [
+    "https://cdn.pixabay.com/photo/2016/06/14/19/37/utensils-1457356_1280.jpg"
+   ],
+   "stock": 10,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Brass Collection",
+    "nameKn": "ಹಿತ್ತಾಳೆ ಸಂಗ್ರಹ",
+    "slug": "brass-collection"
+   },
+   "storeCount": 1,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Brass Puttu Parat S-14 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": true,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:10Z"
+  },
+  {
+   "id": "cmuo2qyv2003513m5w2944n9q",
+   "name": "Brass Puttu Parat S-15",
+   "nameKn": null,
+   "slug": "brass-puttu-parat-s-15-br1800",
+   "price": 1400,
+   "mrp": 1500,
+   "images": [
+    "https://cdn.pixabay.com/photo/2018/02/03/23/17/ganesha-3128714_1280.png"
+   ],
+   "stock": 10,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Brass Collection",
+    "nameKn": "ಹಿತ್ತಾಳೆ ಸಂಗ್ರಹ",
+    "slug": "brass-collection"
+   },
+   "storeCount": 2,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Brass Puttu Parat S-15 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": true,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:19:11Z"
+  },
+  {
+   "id": "cmuo2qz0z028313m5cqzx0k3l",
+   "name": "Smokeless Camphor",
+   "nameKn": null,
+   "slug": "smokeless-camphor-50-gms-pj0162",
+   "price": 90,
+   "mrp": 100,
+   "images": [
+    "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg"
+   ],
+   "stock": 16,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Pooja Essentials",
+    "nameKn": "ಪೂಜಾ ಸಾಮಗ್ರಿಗಳು",
+    "slug": "pooja-essentials"
+   },
+   "storeCount": 0,
+   "variants": [
+    {
+     "id": "cmuo2r0ph032913m5ay8sm9oh",
+     "label": "50g",
+     "price": 90,
+     "stock": 0
+    },
+    {
+     "id": "cmuo2r0ph032a13m5s0rvg5iv",
+     "label": "100g",
+     "price": 180,
+     "stock": 0
+    },
+    {
+     "id": "cmuo2r0ph032b13m5eljgz77k",
+     "label": "250g",
+     "price": 450,
+     "stock": 0
+    },
+    {
+     "id": "cmuo2r0ph032c13m5a543870f",
+     "label": "500g",
+     "price": 850,
+     "stock": 0
+    },
+    {
+     "id": "cmuo2r0ph032d13m5o92drnz8",
+     "label": "1kg",
+     "price": 1600,
+     "stock": 16
+    }
+   ],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Smokeless Camphor — from Poojaloka's own store inventory. Choose your quantity above. Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:13Z"
+  },
+  {
+   "id": "cmuo2qz10028o13m53gewuw69",
+   "name": "Sree Sugandi Sambrani Agarbatti 250G",
+   "nameKn": null,
+   "slug": "sree-sugandi-sambrani-agarbatti-250g-8908004012789",
+   "price": 170,
+   "mrp": 170,
+   "images": [
+    "https://cdn.pixabay.com/photo/2017/09/22/08/18/diwali-festival-2774745_1280.jpg"
+   ],
+   "stock": 1,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Pooja Essentials",
+    "nameKn": "ಪೂಜಾ ಸಾಮಗ್ರಿಗಳು",
+    "slug": "pooja-essentials"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Sree Sugandi Sambrani Agarbatti 250G — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": {
+    "id": "cmuo2qyue002z13m5qfw12r3f",
+    "name": "Deepavali",
+    "nameKn": "ದೀಪಾವಳಿ",
+    "slug": "deepavali",
+    "image": "https://cdn.pixabay.com/photo/2017/09/22/08/18/diwali-festival-2774745_1280.jpg",
+    "importance": "The festival of lights celebrating Lord Rama's return to Ayodhya and Goddess Lakshmi's blessings of prosperity.",
+    "poojaVidhi": "Lakshmi-Ganesha puja performed at dusk with diyas lit around the home, followed by exchange of sweets.",
+    "origin": "Marks Rama's homecoming after 14 years of exile and the victory of light over darkness.",
+    "itemsNeeded": "[\"Lakshmi-Ganesha idols\",\"Clay diyas\",\"Rangoli colors\",\"Cotton wicks\",\"Sesame oil\"]",
+    "date": null
+   },
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:19:14Z"
+  },
+  {
+   "id": "cmuo2qz1t02h613m53k1bfe1t",
+   "name": "Vajra Basma",
+   "nameKn": null,
+   "slug": "vajra-basma-1-gm-ay0054",
+   "price": 6500,
+   "mrp": 6500,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/08/06/07/46/spices-877518_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": true,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ayurvedic Items",
+    "nameKn": "ಆಯುರ್ವೇದ ವಸ್ತುಗಳು",
+    "slug": "ayurvedic-items"
+   },
+   "storeCount": 0,
+   "variants": [
+    {
+     "id": "cmuo2r0uj033j13m5a7tz5nas",
+     "label": "1g",
+     "price": 6500,
+     "stock": 0
+    },
+    {
+     "id": "cmuo2r0uj033k13m5lwno43ch",
+     "label": "1g",
+     "price": 12600,
+     "stock": 0
+    }
+   ],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Vajra Basma — from Poojaloka's own store inventory. Choose your quantity above. Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:15Z"
+  },
+  {
+   "id": "cmuo2qz1t02hl13m5sg4d2qlw",
+   "name": "Veera Basma 1 Gm",
+   "nameKn": null,
+   "slug": "veera-basma-1-gm-ay0544",
+   "price": 9000,
+   "mrp": 9000,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/05/07/11/26/ayurvedic-756352_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": true,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ayurvedic Items",
+    "nameKn": "ಆಯುರ್ವೇದ ವಸ್ತುಗಳು",
+    "slug": "ayurvedic-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Veera Basma 1 Gm — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:16Z"
+  },
+  {
+   "id": "cmuo2qz1v02lk13m5yr88obd2",
+   "name": "Yelaki Hara 100 Ele 1 Pcs",
+   "nameKn": null,
+   "slug": "yelaki-hara-100-ele-1-pcs-ci0022",
+   "price": 14000,
+   "mrp": 15000,
+   "images": [
+    "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": true,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ceremonial Items",
+    "nameKn": "ಧಾರ್ಮಿಕ ವಿಧಿ ವಸ್ತುಗಳು",
+    "slug": "ceremonial-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Yelaki Hara 100 Ele 1 Pcs — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:17Z"
+  },
+  {
+   "id": "cmuo2qz1v02lo13m5ry9wvod7",
+   "name": "Yelaki Hara 25 Ele 1 Pcs",
+   "nameKn": null,
+   "slug": "yelaki-hara-25-ele-1-pcs-ci0020",
+   "price": 4500,
+   "mrp": 4800,
+   "images": [
+    "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": true,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ceremonial Items",
+    "nameKn": "ಧಾರ್ಮಿಕ ವಿಧಿ ವಸ್ತುಗಳು",
+    "slug": "ceremonial-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Yelaki Hara 25 Ele 1 Pcs — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 3,
+   "_retrieved_at": "2026-10-24T14:19:18Z"
+  },
+  {
+   "id": "cmuo2qz1v02lr13m5kvofg0lw",
+   "name": "Yelaki Hara 50 Ele 1 Pcs",
+   "nameKn": null,
+   "slug": "yelaki-hara-50-ele-1-pcs-ci0021",
+   "price": 6500,
+   "mrp": 7000,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/03/09/05/31/incense-665068_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": true,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ceremonial Items",
+    "nameKn": "ಧಾರ್ಮಿಕ ವಿಧಿ ವಸ್ತುಗಳು",
+    "slug": "ceremonial-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Yelaki Hara 50 Ele 1 Pcs — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 3,
+   "_retrieved_at": "2026-10-24T14:19:19Z"
+  },
+  {
+   "id": "cmuo2qz1302ck13m54n4f29qw",
+   "name": "SURYA KANTI BASMA",
+   "nameKn": null,
+   "slug": "surya-kanti-basma-suryakantibasma",
+   "price": 5500,
+   "mrp": 5500,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/05/07/11/26/ayurvedic-756352_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": true,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ayurvedic Items",
+    "nameKn": "ಆಯುರ್ವೇದ ವಸ್ತುಗಳು",
+    "slug": "ayurvedic-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "SURYA KANTI BASMA — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:19:21Z"
+  },
+  {
+   "id": "cmuo2qz1302cq13m5x1ex0fzk",
+   "name": "Swarna Basma",
+   "nameKn": null,
+   "slug": "swarna-basma-1-gm-ay0040",
+   "price": 6400,
+   "mrp": 6400,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/08/06/07/46/spices-877518_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": true,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ayurvedic Items",
+    "nameKn": "ಆಯುರ್ವೇದ ವಸ್ತುಗಳು",
+    "slug": "ayurvedic-items"
+   },
+   "storeCount": 0,
+   "variants": [
+    {
+     "id": "cmuo2r0r0032o13m57nyxlh2j",
+     "label": "1g",
+     "price": 6400,
+     "stock": 0
+    },
+    {
+     "id": "cmuo2r0r0032p13m5eac82bh0",
+     "label": "1g",
+     "price": 4500,
+     "stock": 0
+    }
+   ],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Swarna Basma — from Poojaloka's own store inventory. Choose your quantity above. Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:19:22Z"
+  },
+  {
+   "id": "cmuo2qyzu01mk13m5tgiklkeb",
+   "name": "Meru Brass Solid 6X6",
+   "nameKn": null,
+   "slug": "meru-brass-solid-6x6-id0011",
+   "price": 7000,
+   "mrp": 7500,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/11/27/06/18/bells-1065015_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": true,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Idols",
+    "nameKn": "ವಿಗ್ರಹಗಳು",
+    "slug": "idols"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Meru Brass Solid 6X6 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 3,
+   "_retrieved_at": "2026-10-24T14:19:23Z"
+  },
+  {
+   "id": "cmuo2qz1s02em13m5rftf3m10",
+   "name": "Thomale 2000",
+   "nameKn": null,
+   "slug": "thomale-2000-fc0258",
+   "price": 2000,
+   "mrp": 2200,
+   "images": [
+    "https://cdn.pixabay.com/photo/2017/09/22/08/18/diwali-festival-2774745_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": true,
+   "allowBackorder": true,
+   "category": {
+    "name": "Fancy Items",
+    "nameKn": "ಅಲಂಕಾರಿಕ ವಸ್ತುಗಳು",
+    "slug": "fancy-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Thomale 2000 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:24Z"
+  },
+  {
+   "id": "cmuo2qz1t02hb13m5xwuugt8h",
+   "name": "Vastra 12",
+   "nameKn": null,
+   "slug": "vastra-12-cl0004",
+   "price": 12,
+   "mrp": 15,
+   "images": [
+    "https://cdn.pixabay.com/photo/2019/05/22/10/58/fabric-4221225_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": true,
+   "allowBackorder": true,
+   "category": {
+    "name": "Cloth & Dhoti",
+    "nameKn": "ಬಟ್ಟೆ ಮತ್ತು ಪಂಚೆ",
+    "slug": "cloth-dhoti"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Vastra 12 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:19:25Z"
+  },
+  {
+   "id": "cmuo2qz1u02k013m53p0ds1ly",
+   "name": "White Gulganji 1 Kg",
+   "nameKn": null,
+   "slug": "white-gulganji-1-kg-ay0440",
+   "price": 1,
+   "mrp": 1,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/05/07/11/26/ayurvedic-756352_1280.jpg"
+   ],
+   "stock": -2,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": true,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ayurvedic Items",
+    "nameKn": "ಆಯುರ್ವೇದ ವಸ್ತುಗಳು",
+    "slug": "ayurvedic-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "White Gulganji 1 Kg — from Poojaloka's own store inventory (Kgs). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:19:26Z"
+  },
+  {
+   "id": "cmuo2qz0u021513m5mlxdsm45",
+   "name": "Rose Water (banjaras)",
+   "nameKn": null,
+   "slug": "rose-water-banjaras-30-ml-8906050591821",
+   "price": 16,
+   "mrp": 16,
+   "images": [
+    "https://cdn.pixabay.com/photo/2015/08/06/07/46/spices-877518_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": true,
+   "allowBackorder": true,
+   "category": {
+    "name": "Ayurvedic Items",
+    "nameKn": "ಆಯುರ್ವೇದ ವಸ್ತುಗಳು",
+    "slug": "ayurvedic-items"
+   },
+   "storeCount": 0,
+   "variants": [
+    {
+     "id": "cmuo2r0ka030o13m50osvrvg0",
+     "label": "30ml",
+     "price": 16,
+     "stock": 0
+    },
+    {
+     "id": "cmuo2r0ka030p13m52pju83h8",
+     "label": "60ml",
+     "price": 30,
+     "stock": 0
+    },
+    {
+     "id": "cmuo2r0ka030q13m5w63qmxri",
+     "label": "120ml",
+     "price": 50,
+     "stock": 0
+    },
+    {
+     "id": "cmuo2r0ka030r13m5hzaq2tej",
+     "label": "250ml",
+     "price": 80,
+     "stock": 0
+    },
+    {
+     "id": "cmuo2r0ka030s13m5zqylt699",
+     "label": "500ml",
+     "price": 120,
+     "stock": 0
+    },
+    {
+     "id": "cmuo2r0ka030t13m5qvdddzce",
+     "label": "1L",
+     "price": 160,
+     "stock": 0
+    }
+   ],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Rose Water (banjaras) — from Poojaloka's own store inventory. Choose your quantity above. Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:27Z"
+  },
+  {
+   "id": "cmuo2qz0y026j13m5i4cfn7yn",
+   "name": "Shiva Dhara/Thread 1 Katu",
+   "nameKn": null,
+   "slug": "shiva-dhara-thread-1-katu-pj0236",
+   "price": 100,
+   "mrp": 120,
+   "images": [
+    "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": true,
+   "allowBackorder": true,
+   "category": {
+    "name": "Pooja Essentials",
+    "nameKn": "ಪೂಜಾ ಸಾಮಗ್ರಿಗಳು",
+    "slug": "pooja-essentials"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Shiva Dhara/Thread 1 Katu — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 3,
+   "_retrieved_at": "2026-10-24T14:19:29Z"
+  },
+  {
+   "id": "cmuo2qz10029813m56fihkti1",
+   "name": "Steel Bowl HY 60",
+   "nameKn": null,
+   "slug": "steel-bowl-hy-60-st0069",
+   "price": 60,
+   "mrp": 70,
+   "images": [
+    "https://cdn.pixabay.com/photo/2016/06/14/19/37/utensils-1457356_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": true,
+   "allowBackorder": true,
+   "category": {
+    "name": "Steel Items",
+    "nameKn": "ಸ್ಟೀಲ್ ವಸ್ತುಗಳು",
+    "slug": "steel-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Steel Bowl HY 60 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:19:30Z"
+  },
+  {
+   "id": "cmvmflb3z0001nu4mrgybs4ov",
+   "name": "chair",
+   "nameKn": null,
+   "slug": "chair",
+   "price": 230,
+   "mrp": 345,
+   "images": [
+    "https://billing.poojaloka.com/uploads/online-store/1792848262711-hhi7n2fq.jpeg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "General Items",
+    "nameKn": "ಸಾಮಾನ್ಯ ವಸ್ತುಗಳು",
+    "slug": "general-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "chair",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:31Z"
+  },
+  {
+   "id": "cmuo2qyyq01a713m5vr48ys5a",
+   "name": "KALASA",
+   "nameKn": null,
+   "slug": "kalasa-0000346",
+   "price": 1440,
+   "mrp": 1612.8,
+   "images": [
+    "https://cdn.pixabay.com/photo/2014/04/14/16/24/diya-323911_1280.jpg"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": false,
+   "isDevoteeFavorite": true,
+   "allowBackorder": true,
+   "category": {
+    "name": "General Items",
+    "nameKn": "ಸಾಮಾನ್ಯ ವಸ್ತುಗಳು",
+    "slug": "general-items"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "KALASA — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": null,
+   "deliveryAvailable": false,
+   "estDeliveryDays": 1,
+   "_retrieved_at": "2026-10-24T14:19:32Z"
+  },
+  {
+   "id": "cmuo2qyyu01en13m5a547640d",
+   "name": "Kerla Deepa Sheet 20",
+   "nameKn": null,
+   "slug": "kerla-deepa-sheet-20-br0035",
+   "price": 3150,
+   "mrp": 3350,
+   "images": [
+    "https://cdn.pixabay.com/photo/2018/02/03/23/17/ganesha-3128714_1280.png"
+   ],
+   "stock": 0,
+   "ratingAvg": 0,
+   "ratingCount": 0,
+   "isBestSeller": true,
+   "isDevoteeFavorite": false,
+   "allowBackorder": true,
+   "category": {
+    "name": "Brass Collection",
+    "nameKn": "ಹಿತ್ತಾಳೆ ಸಂಗ್ರಹ",
+    "slug": "brass-collection"
+   },
+   "storeCount": 0,
+   "variants": [],
+   "sizeLabel": null,
+   "sizeTag": null,
+   "description": "Kerla Deepa Sheet 20 — from Poojaloka's own store inventory (Nos). Authentic, ready to ship.",
+   "festival": {
+    "id": "cmuo2qyue002z13m5qfw12r3f",
+    "name": "Deepavali",
+    "nameKn": "ದೀಪಾವಳಿ",
+    "slug": "deepavali",
+    "image": "https://cdn.pixabay.com/photo/2017/09/22/08/18/diwali-festival-2774745_1280.jpg",
+    "importance": "The festival of lights celebrating Lord Rama's return to Ayodhya and Goddess Lakshmi's blessings of prosperity.",
+    "poojaVidhi": "Lakshmi-Ganesha puja performed at dusk with diyas lit around the home, followed by exchange of sweets.",
+    "origin": "Marks Rama's homecoming after 14 years of exile and the victory of light over darkness.",
+    "itemsNeeded": "[\"Lakshmi-Ganesha idols\",\"Clay diyas\",\"Rangoli colors\",\"Cotton wicks\",\"Sesame oil\"]",
+    "date": null
+   },
+   "deliveryAvailable": false,
+   "estDeliveryDays": 2,
+   "_retrieved_at": "2026-10-24T14:19:33Z"
+  }
+ ]
+}

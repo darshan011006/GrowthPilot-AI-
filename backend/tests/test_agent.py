@@ -21,21 +21,36 @@ from .conftest import Api, make_client, run_worker
 
 def test_goal_parsing():
     intent, p = parse_goal("Create a seven-day Instagram campaign for our new sofa collection in Bengaluru for Diwali")
-    assert intent == "campaign" and p["days"] == 7 and p["category"] == "sofa" and p["occasion"] == "Diwali"
+    assert intent == "campaign" and p["days"] == 7 and p["category"] == "sofa" and p["occasion"] == "Deepavali"
     assert p["geography"] == "Bengaluru"
     assert parse_goal("Evaluate the actual results and recommend what to change next week")[0] == "evaluate"
     assert parse_goal("Research current living-room design trends")[0] == "research"
     assert parse_goal("Analyse public competitor content")[0] == "competitor"
+    _, p = parse_goal("Deepavali campaign on Instagram, Facebook, Pinterest and Threads for diyas")
+    assert p["platforms"] == ["instagram", "facebook", "pinterest", "threads"] and p["category"] == "diya"
+    assert parse_goal("Plan a campaign across all seven platforms")[1]["platforms"] == [
+        "instagram", "facebook", "pinterest", "x", "linkedin", "youtube", "threads"]
 
 
 def test_every_tool_has_schema_and_description():
     from growthpilot.agent import tools  # noqa: F401
 
     assert len(registry.REGISTRY) == 26
+    required = {"inspect_brand", "retrieve_catalogue", "verify_product_facts", "search_web",
+                "collect_competitor_references", "analyse_trends", "analyse_campaign_history", "identify_content_gaps",
+                "create_campaign_plan", "rank_campaign_ideas", "create_content_brief", "generate_caption",
+                "generate_creative_asset", "validate_creative", "create_platform_variant",
+                "check_platform_capabilities", "estimate_campaign_cost", "prepare_schedule", "request_human_approval",
+                "publish_approved_content", "verify_publication", "retrieve_available_analytics",
+                "evaluate_experiment", "recommend_next_action"}
+    assert required <= set(registry.REGISTRY)
     for t in registry.REGISTRY.values():
         s = t.schema()
-        assert s["type"] == "object" and t.description and t.permission
+        assert s["type"] == "object" and t.description and t.permission and t.role and t.effects
         assert s.get("additionalProperties") is False
+    # Only the publishing tool can post publicly, and it's a Distribution tool.
+    public = [t.name for t in registry.REGISTRY.values() if registry.Effect.PUBLIC_PUBLISH in t.effects]
+    assert public == ["publish_approved_content"]
 
 
 def _run_obj(api: Api, goal="Create a 3-day Instagram campaign for sofas"):
@@ -50,11 +65,11 @@ def test_invalid_tool_input_and_unknown_tool_are_recorded(demo_seeded):
     with session_scope() as db:
         run = db.get(AgentRun, rid)
         r = Runner(db, run)
-        status, _, err = r.execute(Action("tool", tool="create_content_calendar", input={"days": 99}))
+        status, _, err = r.execute(Action("tool", tool="prepare_schedule", input={"days": 99}))
         assert status == "error" and "days" in err
         status, _, err = r.execute(Action("tool", tool="run_shell", input={}))
         assert status == "error" and "Unknown tool" in err
-        status, _, err = r.execute(Action("tool", tool="load_brand_context", input={"surprise": 1}))
+        status, _, err = r.execute(Action("tool", tool="inspect_brand", input={"surprise": 1}))
         assert status == "error"  # extra fields forbidden
 
 
@@ -83,7 +98,7 @@ def test_research_without_competitors_branches(demo):
     run_worker()
     run = api.get(f"/api/agent/runs/{r['id']}").json()
     assert run["status"] == "completed"
-    fetch = next(s for s in run["steps"] if s["tool"] == "fetch_competitor_data")
+    fetch = next(s for s in run["steps"] if s["tool"] == "collect_competitor_references")
     assert fetch["status"] == "blocked"
     assert "no_competitors" in run["blockers"]
 
@@ -192,7 +207,7 @@ class FakeLLM:
 
     def tool_turn(self, system, messages, tools):
         self.seen.append(json.loads(json.dumps(messages, default=str)))
-        assert any(t["name"] == "publish_content" for t in tools)
+        assert any(t["name"] == "publish_approved_content" for t in tools)
         return self.script.pop(0), 100
 
     def structured(self, system, prompt, schema):
@@ -202,8 +217,8 @@ class FakeLLM:
 def test_llm_planner_loop_and_publish_refusal(monkeypatch, tmp_path):
     api = _live(monkeypatch, tmp_path)
     fake = FakeLLM([
-        Resp([Block("text", "Plan: 1. load brand 2. try to publish"), Block("tool_use", id="t1", name="load_brand_context"),
-              Block("tool_use", id="t2", name="publish_content", input={"content_ids": [999]})], "tool_use"),
+        Resp([Block("text", "Plan: 1. load brand 2. try to publish"), Block("tool_use", id="t1", name="inspect_brand"),
+              Block("tool_use", id="t2", name="publish_approved_content", input={"content_ids": [999]})], "tool_use"),
         Resp([Block("text", "Publishing was refused because nothing is approved. Done.")], "end_turn"),
     ])
     set_llm_override(fake)
@@ -214,8 +229,8 @@ def test_llm_planner_loop_and_publish_refusal(monkeypatch, tmp_path):
                                            [(s.phase, s.tool, s.status, s.message[:80]) for s in run.steps])
         assert run.tokens_used >= 200
         steps = {s.tool: s for s in run.steps if s.tool}
-        assert steps["load_brand_context"].status == "ok"
-        assert steps["publish_content"].status == "error"  # nothing approved → refused
+        assert steps["inspect_brand"].status == "ok"
+        assert steps["publish_approved_content"].status == "error"  # nothing approved → refused
     # The second model call received both tool results in one user message.
     results = fake.seen[1][-1]["content"]
     assert {b["tool_use_id"] for b in results} == {"t1", "t2"}
@@ -226,7 +241,7 @@ def test_live_run_without_llm_key_is_blocked_with_message(monkeypatch, tmp_path)
     api = Api(make_client(monkeypatch, tmp_path, "live"))
     api.register()
     r = api.post("/api/agent/runs", json={"goal": "Plan next week's campaign"})
-    assert r.status_code == 400 and "LLM_API_KEY" in r.json()["message"]
+    assert r.status_code == 400 and "GEMINI_API_KEY" in r.json()["message"]
 
 
 @pytest.mark.parametrize("goal", ["Analyse public competitor content and identify topics we are missing",

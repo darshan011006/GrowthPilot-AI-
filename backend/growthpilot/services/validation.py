@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import Asset, Brand, Competitor, CompetitorObservation, ContentItem, Product, utcnow
+from ..platforms import caption_length, spec
 
 
 @dataclass
@@ -58,6 +59,7 @@ MATERIALS = [
     "walnut", "mango wood", "pine", "rubberwood", "bamboo", "rattan", "cane", "jute", "linen", "cotton", "velvet",
     "boucle", "bouclé", "leather", "leatherette", "faux leather", "wool", "silk", "marble", "granite", "quartz",
     "glass", "brass", "steel", "iron", "aluminium", "aluminum", "chrome", "terrazzo", "ceramic", "memory foam",
+    "copper", "german silver", "panchaloha", "clay", "silver", "gold", "sandalwood",
 ]
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?\n])\s+")
 PRICE_RE = re.compile(r"(?:₹|\brs\.?|\binr)\s?(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s?(?:/-|rupees)", re.I)
@@ -69,6 +71,8 @@ STOCK_RE = re.compile(r"in stock|ready to ship|ships? (?:in|within) \d+|limited 
                       r"same[- ]day delivery|next[- ]day delivery|free (?:delivery|shipping)|delivered in \d+", re.I)
 CERT_RE = re.compile(r"\bcertified\b|\bfsc\b|\biso\s?\d*|greenguard|bifma|\borganic\b|non[- ]toxic|\beco[- ]friendly\b|"
                      r"\bsustainabl[ey]|\brecycled\b|\bzero[- ]waste\b|carbon[- ]neutral", re.I)
+HEALTH_RE = re.compile(r"\bcures?\b|\bheals?\b|\bhealing\b|\btreats?\b(?! for)|\btreatment\b|remedy for|"
+                       r"prevents? (?:disease|illness)|boosts? (?:your )?immunity|\bmedicinal\b|\bclinically\b", re.I)
 SUPERLATIVE_RE = re.compile(r"\bbest\b|\bcheapest\b|#1\b|number one|\bguaranteed\b|\blifetime\b|\bunbreakable\b|"
                             r"\b100%|\bwaterproof\b|\bindestructible\b|\bperfect\b", re.I)
 
@@ -82,6 +86,14 @@ def _money(raw: str) -> Decimal | None:
         return Decimal(raw.replace(",", ""))
     except InvalidOperation:
         return None
+
+
+def _stale_hours(p: Product) -> float | None:
+    """Hours since the source fact was retrieved, if older than the freshness window (None = fresh or manual)."""
+    if p.retrieved_at is None:
+        return None
+    hours = (utcnow() - p.retrieved_at).total_seconds() / 3600
+    return hours if hours > get_settings().catalogue_fresh_hours else None
 
 
 def _covered_by_approved(sentence: str, approved: list[str]) -> str | None:
@@ -114,23 +126,70 @@ def final_caption(item: ContentItem) -> str:
 # ── product claims ───────────────────────────────────────────────────────
 
 
+def brand_phrases(brand: Brand) -> list[str]:
+    """Wording quoted from the brand's own published guides (e.g. a festival's "items needed" list).
+
+    These are source-reported lists of what a ritual needs, not claims about a product's materials, so the
+    material/dimension checks skip them. Prices, offers and other commercial claims are still checked."""
+    src = brand.catalogue_source or {}
+    out = []
+    for f in src.get("festivals") or []:
+        out += [str(x) for x in f.get("itemsNeeded") or []]
+    out += [str(a.get("title", "")) for a in src.get("articles") or []]
+    return sorted({x for x in out if x.strip()}, key=len, reverse=True)
+
+
 def check_product_claims(text: str, brand: Brand, referenced: list[Product], catalogue: list[Product]) -> list[Check]:
     checks: list[Check] = []
+    quoted = [ph for ph in brand_phrases(brand) if re.search(re.escape(ph), text, re.I)]
     approved = list(brand.approved_claims or [])
     products = referenced or catalogue
     sentences = [s for s in SENTENCE_SPLIT.split(text) if s.strip()]
 
-    # Prices must match a catalogue price exactly.
-    known_prices = {p.price: p for p in products if p.price is not None}
+    # Prices must match a catalogue (or variant) price exactly, from data that is fit to promote.
+    live = get_settings().is_live
+    known_prices: dict[Decimal, Product] = {}
+    for p in products:
+        if p.price is not None:
+            known_prices.setdefault(Decimal(p.price), p)
+        for v in p.variants or []:
+            if v.get("price") is not None:
+                known_prices.setdefault(Decimal(str(v["price"])).quantize(Decimal("0.01")), p)
+    mrps = {Decimal(p.mrp): p for p in products if p.mrp is not None and p.price is not None and p.mrp != p.price}
     for m in PRICE_RE.finditer(text):
         value = _money(m.group(1) or m.group(2))
-        if value is None or value < 100:  # ignore tiny numbers like "2/-" typos
+        if value is None or value < 1:
             continue
+        value = value.quantize(Decimal("0.01"))
         if value in known_prices:
             p = known_prices[value]
+            codes = {q.get("code") for q in p.data_quality or []}
+            if "price_suspicious" in codes:
+                checks.append(Check("price", "fail", f"{p.name}'s listed price looks like a data error at the source; "
+                                    "confirm it before promoting.", m.group(0), f"SKU {p.sku}"))
+                continue
+            age = _stale_hours(p)
+            if age is not None:
+                checks.append(Check("price_freshness", "fail" if live else "warn",
+                                    f"{p.name}'s price was retrieved {age:.0f} h ago; refresh the catalogue before "
+                                    "publishing a price." if live else f"{p.name}'s price comes from a snapshot "
+                                    f"{age:.0f} h old (demo). Live mode refreshes it first.", m.group(0), f"SKU {p.sku}"))
             checks.append(Check("price", "pass", f"Price matches catalogue ({p.name}).", m.group(0), f"SKU {p.sku}"))
+        elif value in mrps:
+            p = mrps[value]
+            ok = _covered_by_approved(text, approved)
+            checks.append(Check("mrp", "pass" if ok else "fail", "MRP comparison is covered by an approved claim." if ok
+                                else f"Quotes {p.name}'s MRP, which implies a discount; that needs an approved "
+                                "offer claim.", m.group(0), f"SKU {p.sku}"))
         else:
             checks.append(Check("price", "fail", "Price doesn't match any referenced catalogue price.", m.group(0)))
+    for p in referenced:
+        codes = {q.get("code") for q in p.data_quality or []}
+        if "possible_test_listing" in codes:
+            checks.append(Check("listing", "fail", f"“{p.name}” looks like a test or placeholder listing; don't "
+                                "promote it.", p.name, f"SKU {p.sku}"))
+        if p.is_active is False:
+            checks.append(Check("listing", "fail", f"“{p.name}” is no longer active in the catalogue.", p.name))
 
     for sentence in sentences:
         approved_hit = _covered_by_approved(sentence, approved)
@@ -158,6 +217,12 @@ def check_product_claims(text: str, brand: Brand, referenced: list[Product], cat
                                 "Delivery/stock wording is an approved claim." if approved_hit else
                                 "States stock or delivery terms that aren't approved claims.", sentence.strip(),
                                 approved_hit or ""))
+        if HEALTH_RE.search(sentence):
+            checks.append(Check("health_claim", "pass" if approved_hit else "fail",
+                                "Health wording is an approved claim." if approved_hit else
+                                "Makes a health or medicinal claim. These need substantiation and are restricted for "
+                                "Ayurvedic and wellness products; rephrase as traditional use, or get it approved.",
+                                sentence.strip(), approved_hit or ""))
         for m in CERT_RE.finditer(sentence):
             word = m.group(0).lower()
             attrs = " ".join(f"{k} {v}" for p in products for k, v in (p.verified_attributes or {}).items()).lower()
@@ -167,8 +232,10 @@ def check_product_claims(text: str, brand: Brand, referenced: list[Product], cat
                                 f"“{m.group(0)}” isn't backed by verified attributes or approved claims.",
                                 sentence.strip(), str(ok) if ok else ""))
 
-    # Materials must belong to the referenced products.
+    # Materials must belong to the referenced products (wording quoted from the brand's own guides is skipped).
     lowered = text.lower()
+    for ph in quoted:
+        lowered = re.sub(re.escape(ph.lower()), " ", lowered)
     ref_mats = {_norm(x) for p in products for x in (p.materials or []) + (p.finishes or [])}
     all_mats = {_norm(x) for p in catalogue for x in (p.materials or []) + (p.finishes or [])}
     for mat in MATERIALS:
@@ -216,7 +283,8 @@ def check_brand(item: ContentItem, brand: Brand, competitor_names: list[str], co
     checks: list[Check] = []
     if text.count("!") > 3:
         checks.append(Check("tone", "warn", "More than three exclamation marks; may not match the brand voice."))
-    caps = [w for w in re.findall(r"\b[A-Z]{4,}\b", text) if w not in {"DIWALI", "BENGALURU"}]
+    allowed_caps = {"DIWALI", "DEEPAVALI", "BENGALURU", "MRP", "POOJA"} | {w.upper() for w in brand.name.split()}
+    caps = [w for w in re.findall(r"\b[A-Z]{4,}\b", text) if w not in allowed_caps]
     if len(caps) > 2:
         checks.append(Check("tone", "warn", f"Several ALL-CAPS words ({', '.join(caps[:4])})."))
     if len(EMOJI_RE.findall(text)) > 6:
@@ -253,49 +321,71 @@ IG_CAROUSEL_MAX = 10
 
 
 def check_platform(item: ContentItem, assets: list[Asset]) -> list[Check]:
+    """Format rules for the item's platform, from ``growthpilot.platforms.SPECS``."""
     checks: list[Check] = []
     live = get_settings().is_live
-    if item.platform != "instagram":
-        checks.append(Check("adapter", "warn", f"No publishing adapter for {item.platform}; plan/export only."))
+    sp = spec(item.platform)
+    if sp is None:
+        checks.append(Check("adapter", "warn", f"Unknown platform {item.platform!r}; plan/export only."))
         return checks
     caption = final_caption(item)
+    n = caption_length(caption, sp.key)
     tags = re.findall(r"(?<!\w)#\w+", caption)
     mentions = re.findall(r"(?<!\w)@\w+", caption)
-    checks.append(Check("caption_length", "pass" if len(caption) <= IG_CAPTION_MAX else "fail",
-                        f"Caption is {len(caption)}/{IG_CAPTION_MAX} characters."))
-    checks.append(Check("hashtags", "pass" if len(tags) <= IG_HASHTAGS_MAX else "fail",
-                        f"{len(tags)}/{IG_HASHTAGS_MAX} hashtags."))
-    if len(mentions) > IG_MENTIONS_MAX:
+    checks.append(Check("caption_length", "pass" if n <= sp.caption_max else "fail",
+                        f"Caption is {n}/{sp.caption_max} characters ({sp.label})."))
+    if sp.hashtags_max is not None:
+        over = len(tags) > sp.hashtags_max
+        hard = sp.key == "instagram"
+        checks.append(Check("hashtags", ("fail" if hard else "warn") if over else "pass",
+                            f"{len(tags)}/{sp.hashtags_max} hashtags" + (" (platform limit)." if hard else
+                                                                         " (recommended maximum).")))
+    if sp.key == "instagram" and len(mentions) > IG_MENTIONS_MAX:
         checks.append(Check("mentions", "fail", f"{len(mentions)} @mentions; Instagram allows {IG_MENTIONS_MAX}."))
-    if item.content_type in ("reel", "story"):
-        checks.append(Check("format", "fail", f"Publishing {item.content_type}s needs video upload, which isn't "
-                            "implemented. Keep as a brief or post manually."))
+    if item.content_type in ("reel", "story", "video") or item.content_type not in sp.content_types:
+        if item.content_type in ("reel", "story", "video"):
+            msg = f"Publishing {item.content_type}s needs video, which GrowthPilot doesn't produce. Keep it as a brief."
+        elif sp.key == "youtube":
+            msg = "YouTube publishes video only; this variant is a Shorts brief and thumbnail, not a publishable post."
+        else:
+            msg = f"The {sp.label} API can't publish a {item.content_type}."
+        checks.append(Check("format", "fail", msg))
         return checks
-    needed = 2 if item.content_type == "carousel" else 1
-    if len(assets) < needed:
-        checks.append(Check("media", "fail", f"{item.content_type.title()} needs at least {needed} image(s); "
-                            f"has {len(assets)}."))
-    if item.content_type == "carousel" and len(assets) > IG_CAROUSEL_MAX:
-        checks.append(Check("media", "fail", f"Carousels allow up to {IG_CAROUSEL_MAX} images."))
+    if item.content_type == "carousel":
+        if len(assets) < sp.carousel_min:
+            checks.append(Check("media", "fail", f"Carousel needs at least {sp.carousel_min} image(s); has {len(assets)}."))
+        if sp.carousel_max and len(assets) > sp.carousel_max:
+            checks.append(Check("media", "fail", f"{sp.label} carousels allow up to {sp.carousel_max} images."))
+    elif item.content_type == "post" and sp.requires_media and not assets:
+        checks.append(Check("media", "fail", f"{sp.label} posts need an image; has none."))
+    elif item.content_type == "post" and not assets:
+        checks.append(Check("media", "warn", "No image attached; this will publish as a text post."))
     placeholders = [a for a in assets if a.source == "placeholder"]
     if placeholders:
-        n = len(placeholders)
+        k = len(placeholders)
         checks.append(Check("media", "fail" if live else "warn",
-                            f"{n} placeholder image(s) — replace with real product photos before publishing." if live
-                            else f"{n} placeholder image(s) (demo). Real publishing needs real JPEG photos.",
+                            f"{k} placeholder image(s) — replace with a rendered creative or real photo before publishing."
+                            if live else f"{k} placeholder image(s) (demo). Real publishing needs real images.",
                             ", ".join(a.filename for a in placeholders)[:300]))
     for a in assets:
+        if a.source == "stock":
+            checks.append(Check("media", "fail", "A generic stock image is attached directly. It isn't a photo of the "
+                                "product; use a rendered creative or a real product photo.", a.filename))
         if a.source == "placeholder":
             continue
-        if a.content_type != "image/jpeg":
-            checks.append(Check("media", "fail" if live else "warn", "Instagram publishing accepts JPEG only.",
-                                a.filename))
+        if a.content_type not in sp.image_types:
+            checks.append(Check("media", "fail" if live else "warn",
+                                f"{sp.label} publishing accepts {', '.join(t.split('/')[1].upper() for t in sp.image_types)} "
+                                "only.", a.filename))
+        if a.size_bytes and a.size_bytes > sp.image_max_bytes:
+            checks.append(Check("media", "fail", f"Image is {a.size_bytes / 1e6:.1f} MB; {sp.label} allows "
+                                f"{sp.image_max_bytes / 1e6:.0f} MB.", a.filename))
         if a.width and a.height:
             ratio = a.width / a.height
-            ok = 0.8 <= ratio <= 1.91
+            ok = sp.aspect_min - 1e-3 <= ratio <= sp.aspect_max + 1e-3
             checks.append(Check("aspect_ratio", "pass" if ok else "fail",
-                                f"Aspect ratio {a.width}×{a.height} ({ratio:.2f}); feed images need 4:5 to 1.91:1.",
-                                a.filename))
+                                f"Aspect ratio {a.width}×{a.height} ({ratio:.2f}); {sp.label} needs "
+                                f"{sp.aspect_min:.2f}–{sp.aspect_max:.2f}.", a.filename))
     return checks
 
 

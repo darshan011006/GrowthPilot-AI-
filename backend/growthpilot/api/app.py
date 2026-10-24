@@ -78,10 +78,21 @@ def create_app(settings: Settings | None = None, *, start_worker: bool | None = 
     def health():
         return {"status": "ok", "mode": settings.app_mode.value}
 
-    from .routes import agent, analytics, auth, brand, campaigns, content, integrations, overview, research
+    from .routes import (
+        agent,
+        analytics,
+        auth,
+        brand,
+        campaigns,
+        content,
+        governance,
+        integrations,
+        overview,
+        research,
+    )
     from .routes import settings as settings_routes
 
     for module in (auth, overview, brand, research, agent, campaigns, content, integrations, analytics,
-                   settings_routes):
+                   governance, settings_routes):
         app.include_router(module.router)
     return app

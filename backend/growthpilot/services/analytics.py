@@ -29,7 +29,13 @@ METRIC_DEFINITIONS = {
     "engagement_rate_by_reach": {"label": "Engagement rate (by reach)", "kind": "derived",
                                  "definition": "interactions ÷ reach. Not comparable with platforms that report "
                                                "impressions instead of reach."},
+    "saves_per_reach": {"label": "Saves per reach", "kind": "derived",
+                        "definition": "saves ÷ reach. A signal that people want to come back to the post."},
+    "link_clicks_per_reach": {"label": "Link clicks per reach", "kind": "derived",
+                              "definition": "link clicks ÷ reach, where the platform reports link clicks."},
 }
+METRIC_KEYS = {"engagement_rate_by_reach": "engagement_rate", "saves_per_reach": "saves_rate",
+               "link_clicks_per_reach": "clicks_rate"}
 
 TRACK_FOR = timedelta(days=45)
 REFRESH_EVERY = timedelta(hours=3)
@@ -55,6 +61,20 @@ def er(s: MetricSnapshot | None) -> float | None:
     if i is None or not s.reach:
         return None
     return i / s.reach
+
+
+def rate(s: MetricSnapshot | None, field: str) -> float | None:
+    if s is None or not s.reach or getattr(s, field) is None:
+        return None
+    return getattr(s, field) / s.reach
+
+
+def metric_value(s: MetricSnapshot | None, metric: str) -> float | None:
+    if metric == "saves_per_reach":
+        return rate(s, "saves")
+    if metric == "link_clicks_per_reach":
+        return rate(s, "link_clicks")
+    return er(s)
 
 
 def collect(db: Session, workspace_id: int, *, item_ids: list[int] | None = None, force: bool = False) -> dict:
@@ -84,7 +104,7 @@ def collect(db: Session, workspace_id: int, *, item_ids: list[int] | None = None
         if m is None:
             stats["unavailable"] += 1
             continue
-        source = "instagram_api" if adapter.external else "synthetic"
+        source = f"{adapter.platform}_api" if adapter.external else "synthetic"
         stats["sources"].add(source)
         db.add(MetricSnapshot(content_id=item.id, reach=m.reach, views=m.views, likes=m.likes, comments=m.comments,
                               shares=m.shares, saves=m.saves, profile_visits=m.profile_visits,
@@ -123,6 +143,8 @@ def item_rows(db: Session, workspace_id: int, campaign_id: int | None = None) ->
             "reach": s.reach if s else None, "views": s.views if s else None, "likes": s.likes if s else None,
             "comments": s.comments if s else None, "shares": s.shares if s else None,
             "saves": s.saves if s else None, "interactions": interactions(s), "engagement_rate": er(s),
+            "saves_rate": rate(s, "saves"), "clicks_rate": rate(s, "link_clicks"),
+            "link_clicks": s.link_clicks if s else None,
         })
     return rows
 
@@ -135,9 +157,33 @@ def group(rows: list[dict], key: str) -> list[dict]:
     out = []
     for k, rs in buckets.items():
         ers = [r["engagement_rate"] for r in rs]
+        srs = [r["saves_rate"] for r in rs if r.get("saves_rate") is not None]
         out.append({"key": k, "n": len(rs), "mean_engagement_rate": mean(ers), "min": min(ers), "max": max(ers),
+                    "mean_saves_per_reach": mean(srs) if srs else None,
                     "reach": sum(r["reach"] or 0 for r in rs), "interactions": sum(r["interactions"] or 0 for r in rs)})
     return sorted(out, key=lambda g: g["mean_engagement_rate"], reverse=True)
+
+
+def baseline(db: Session, workspace_id: int, *, metric: str = "engagement_rate_by_reach", content_type: str | None = None,
+             platform: str | None = None, exclude_campaign: int | None = None) -> dict:
+    """The brand's own prior posts as a baseline for a metric (mean of posts with metrics)."""
+    rows = [r for r in item_rows(db, workspace_id) if r["has_metrics"]]
+    if platform:
+        rows = [r for r in rows if r["platform"] == platform]
+    if content_type:
+        rows = [r for r in rows if r["content_type"] == content_type]
+    if exclude_campaign:
+        rows = [r for r in rows if r["campaign_id"] != exclude_campaign]
+    vals = [r[METRIC_KEYS.get(metric, "engagement_rate")] for r in rows]
+    vals = [v for v in vals if v is not None]
+    sources = {r["source"] for r in rows if r["source"]}
+    if not vals:
+        return {"metric": metric, "value": None, "n": 0, "source": "none",
+                "note": "No prior posts with this metric; the experiment's control variant is the only baseline."}
+    return {"metric": metric, "value": mean(vals), "n": len(vals), "source": _data_source(sources),
+            "filters": {"platform": platform, "content_type": content_type},
+            "note": f"Mean of {len(vals)} prior post(s)" + (" (SYNTHETIC demo data)" if sources == {"synthetic"} else "")
+            + "."}
 
 
 def summary(db: Session, workspace_id: int, campaign_id: int | None = None) -> dict:

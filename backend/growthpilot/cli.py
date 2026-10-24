@@ -77,7 +77,7 @@ def cmd_init_env(args) -> None:
 
 
 def cmd_demo_setup(args) -> None:
-    """Create a demo owner account (if needed) and load the fictional demo brand. Demo mode only."""
+    """Create a demo owner account (if needed) and load a demo brand (Poojaloka by default). Demo mode only."""
     from sqlalchemy import select
 
     from .db import check_or_stamp_mode, init_engine, migrate, session_scope
@@ -98,7 +98,8 @@ def cmd_demo_setup(args) -> None:
         if user is None:
             password = secrets.token_urlsafe(9) + "A1"
             user = User(email=args.email, name="Demo Owner", password_hash=hash_password(password))
-            ws = Workspace(name="Aranya Living (demo)", timezone="Asia/Kolkata")
+            ws = Workspace(name="Poojaloka (demo)" if args.brand == "poojaloka" else "Aranya Living (demo)",
+                           timezone="Asia/Kolkata")
             db.add_all([user, ws])
             db.flush()
             db.add(Membership(user_id=user.id, workspace_id=ws.id, role=Role.OWNER))
@@ -106,8 +107,9 @@ def cmd_demo_setup(args) -> None:
             ws_id = ws.id
         else:
             ws_id = db.execute(select(Membership.workspace_id).where(Membership.user_id == user.id)).scalars().first()
-        result = fixtures.seed(db, ws_id, user.id)
-    print(f"Demo data loaded ({result['products']} products, history campaign #{result['history_campaign_id']}).")
+        result = fixtures.seed(db, ws_id, user.id, args.brand)
+    print(f"Demo data loaded: {args.brand} ({result['products']} products, history campaign "
+          f"#{result['history_campaign_id']}).")
     if password:
         cred = PROJECT_ROOT / "data" / "demo-login.txt"
         cred.write_text(f"email: {args.email}\npassword: {password}\n")
@@ -115,6 +117,42 @@ def cmd_demo_setup(args) -> None:
         print(f"Demo login created for {args.email}. Password saved to {cred} (local, gitignored).")
     else:
         print(f"Existing account {args.email} kept; its password is unchanged.")
+
+
+def cmd_sync_catalogue(args) -> None:
+    """Import a brand's catalogue from its connector (Poojaloka storefront API). Live mode, or demo with
+    DEMO_ALLOW_CATALOGUE_SYNC=true. Reads only public product data; prints counts, never secrets."""
+    from sqlalchemy import select
+
+    from . import catalogue
+    from .db import check_or_stamp_mode, init_engine, migrate, session_scope
+    from .models import Brand
+
+    s = _settings()
+    engine = init_engine(s)
+    migrate(engine)
+    check_or_stamp_mode(s)
+    with session_scope() as db:
+        b = db.execute(select(Brand).where(Brand.id == args.brand_id)).scalar_one_or_none() if args.brand_id else \
+            db.execute(select(Brand).order_by(Brand.id)).scalars().first()
+        if b is None:
+            print("No brand found.", file=sys.stderr)
+            sys.exit(2)
+        if not (b.catalogue_source or {}).get("kind"):
+            b.catalogue_source = {"kind": "poojaloka_store_api", "base_url": s.poojaloka_api_base}
+        src = catalogue.get_source(b)
+        if src is None:
+            print("Catalogue sync isn't allowed in demo mode unless DEMO_ALLOW_CATALOGUE_SYNC=true.", file=sys.stderr)
+            sys.exit(2)
+        res = catalogue.sync(db, b, src, full=args.full, limit=args.limit)
+        try:
+            content = src.brand_content()
+            b.catalogue_source = dict(b.catalogue_source or {}) | {k: content[k] for k in ("festivals", "articles")
+                                                                   if content.get(k)}
+        except catalogue.CatalogueError as exc:
+            print(f"Brand content not refreshed: {exc}")
+    print(f"Catalogue sync: {res.created} created, {res.updated} updated, {res.unchanged} unchanged, "
+          f"{res.deactivated} deactivated, {res.photos_downloaded} product photo(s) stored, {len(res.errors)} error(s).")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -137,7 +175,13 @@ def main(argv: list[str] | None = None) -> None:
     se.set_defaults(fn=cmd_init_env)
     sd = sub.add_parser("demo-setup", help="Create a demo login and load demo data (demo mode only)")
     sd.add_argument("--email", default="demo@growthpilot.local")
+    sd.add_argument("--brand", default="poojaloka", choices=["poojaloka", "aranya"])
     sd.set_defaults(fn=cmd_demo_setup)
+    sc = sub.add_parser("sync-catalogue", help="Import the brand catalogue from its connector (live mode)")
+    sc.add_argument("--brand-id", type=int)
+    sc.add_argument("--full", action="store_true", help="Deactivate products no longer listed at the source")
+    sc.add_argument("--limit", type=int, help="Import at most N products")
+    sc.set_defaults(fn=cmd_sync_catalogue)
     args = p.parse_args(argv)
     args.fn(args)
 

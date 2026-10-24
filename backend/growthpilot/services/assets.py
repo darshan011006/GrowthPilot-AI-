@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
 import struct
 import uuid
@@ -85,7 +86,8 @@ def save_upload(db: Session, *, workspace_id: int, brand_id: int | None, filenam
     key = store().save(data, ALLOWED[ctype])
     safe_name = "".join(ch for ch in Path(filename or "upload").name if ch.isalnum() or ch in "._- ")[:120] or "upload"
     a = Asset(workspace_id=workspace_id, brand_id=brand_id, kind=kind, source="upload", filename=safe_name,
-              content_type=ctype, size_bytes=len(data), width=w, height=h, storage_key=key, alt_text=alt_text[:1000])
+              content_type=ctype, size_bytes=len(data), width=w, height=h, storage_key=key, alt_text=alt_text[:1000],
+              sha256=hashlib.sha256(data).hexdigest())
     db.add(a)
     db.flush()
     return a
@@ -131,7 +133,7 @@ def make_placeholder(db: Session, *, workspace_id: int, brand_id: int | None, ti
     a = Asset(workspace_id=workspace_id, brand_id=brand_id, kind="image", source="placeholder",
               filename=f"placeholder-{title[:30]}.svg", content_type="image/svg+xml", size_bytes=len(svg),
               width=1080, height=1350, storage_key=key, alt_text=f"Placeholder for: {brief[:200]}",
-              is_synthetic=synthetic)
+              is_synthetic=synthetic, sha256=hashlib.sha256(svg.encode()).hexdigest())
     db.add(a)
     db.flush()
     return a

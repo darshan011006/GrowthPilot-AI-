@@ -136,10 +136,12 @@ def test_upload_validation_and_public_assets(demo_seeded):
     assert a["width"] == 1080 and a["height"] == 1080 and "/" not in a["filename"]
     from growthpilot.db import session_scope
     from growthpilot.models import Asset
+    from growthpilot.services.assets import make_placeholder
 
     with session_scope() as db:
         token = db.get(Asset, a["id"]).public_token
-        svg = db.query(Asset).filter(Asset.source == "placeholder").first()
+        svg = db.query(Asset).filter(Asset.source == "placeholder").first() or make_placeholder(
+            db, workspace_id=db.get(Asset, a["id"]).workspace_id, brand_id=None, title="x", brief="y")
         svg_token = svg.public_token
     assert api.c.get(f"/api/public/assets/{token}.jpg").status_code == 200
     assert api.c.get(f"/api/public/assets/{svg_token}.svg").status_code == 404  # SVGs are never served publicly

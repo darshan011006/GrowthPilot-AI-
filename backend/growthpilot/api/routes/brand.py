@@ -4,15 +4,18 @@ import re
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ... import audit
+from ... import catalogue as catalogue_mod
+from ...config import get_settings
 from ...db import get_db
 from ...models import Asset, Brand, Persona, Product
+from ...platforms import ORDER
 from ...services import assets as asset_service
 from ...services.errors import WorkflowError
 from .. import serializers as S
@@ -48,6 +51,13 @@ class BrandIn(BaseModel):
     prohibited_messaging: list[str] = Field(default_factory=list, max_length=100)
     constraints: str = Field(default="", max_length=3000)
     permitted_sources: list[str] = Field(default_factory=list, max_length=50)
+    content_pillars: list[str] = Field(default_factory=list, max_length=12)
+    languages: list[str] = Field(default_factory=list, max_length=10)
+    marketing_objectives: list[str] = Field(default_factory=list, max_length=12)
+    platform_preferences: list[str] = Field(default_factory=list, max_length=7)
+    posting_constraints: dict = Field(default_factory=dict)
+    campaign_budget_usd: float | None = Field(default=None, ge=0, le=1000)
+    fonts: list[str] = Field(default_factory=list, max_length=8)
 
 
 def _clean_list(xs: list[str], limit: int = 300) -> list[str]:
@@ -79,8 +89,18 @@ def save_brand(body: BrandIn, ctx: Ctx = Depends(get_ctx)):
         b = Brand(workspace_id=ctx.workspace.id)
         ctx.db.add(b)
     data = body.model_dump()
-    for k in ("approved_claims", "restricted_claims", "prohibited_messaging"):
-        data[k] = _clean_list(data[k])
+    for k in ("approved_claims", "restricted_claims", "prohibited_messaging", "content_pillars", "languages",
+              "marketing_objectives", "fonts"):
+        data[k] = _clean_list(data[k], 300 if "claims" in k or k == "prohibited_messaging" else 120)
+    bad_p = [p for p in data["platform_preferences"] if p not in ORDER]
+    if bad_p:
+        raise ApiError(400, f"Unknown platform(s): {', '.join(bad_p)}.", "validation")
+    pc = data["posting_constraints"] or {}
+    if len(str(pc)) > 2000:
+        raise ApiError(400, "Posting constraints are too long.", "validation")
+    for t in pc.get("posting_times") or []:
+        if not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", str(t)):
+            raise ApiError(400, f"Posting time {t!r} must be HH:MM.", "validation")
     data["permitted_sources"] = _clean_list([s.lower().removeprefix("https://").removeprefix("http://").split("/")[0]
                                              for s in data["permitted_sources"]], 255)
     for k, v in data.items():
@@ -169,6 +189,62 @@ def _apply_product(ctx: Ctx, p: Product, body: ProductIn) -> None:
         setattr(p, k, v.strip() if isinstance(v, str) else v)
 
 
+class SyncIn(BaseModel):
+    full: bool = False
+    limit: int | None = Field(default=None, ge=1, le=5000)
+
+
+@router.post("/catalogue/sync")
+def sync_catalogue(body: SyncIn, ctx: Ctx = Depends(get_ctx)):
+    """Import products from the brand's catalogue source (live store API, or the bundled snapshot in demo mode)."""
+    ctx.require_owner()
+    rate_limit(f"catalogue:{ctx.workspace.id}", 10, 3600)
+    b = current_brand(ctx)
+    s = get_settings()
+    src_cfg = b.catalogue_source or {}
+    if src_cfg.get("kind") != "poojaloka_store_api":
+        raise ApiError(400, "No catalogue connector is set for this brand. Add products manually or by CSV.",
+                       "no_connector")
+    source = catalogue_mod.get_source(b)
+    if source is None:
+        from ...catalogue.poojaloka import SnapshotSource
+        from ...demo.poojaloka import load_snapshot
+
+        snap = load_snapshot()
+        source = SnapshotSource(snap)
+        res = catalogue_mod.sync(ctx.db, b, source, records=source.list_products(), user_id=ctx.user.id, snapshot=True,
+                                 retrieved_at=catalogue_mod.parse_time(snap["meta"]["retrieved_at"]),
+                                 download_photos=False)
+        note = ("Demo mode makes no external calls, so the bundled snapshot was reloaded. Set "
+                "DEMO_ALLOW_CATALOGUE_SYNC=true (or use live mode) to fetch the live store.") if s.is_demo else ""
+    else:
+        res = catalogue_mod.sync(ctx.db, b, source, full=body.full, limit=body.limit, user_id=ctx.user.id)
+        try:
+            content = source.brand_content()
+            b.catalogue_source = dict(b.catalogue_source or {}) | {
+                k: content[k] for k in ("festivals", "articles") if content.get(k)}
+        except catalogue_mod.CatalogueError:
+            pass
+        note = ""
+    ctx.db.commit()
+    return res.as_dict() | {"note": note}
+
+
+class RefreshIn(BaseModel):
+    product_ids: list[int] = Field(default_factory=list, max_length=100)
+
+
+@router.post("/catalogue/refresh")
+def refresh_products(body: RefreshIn, ctx: Ctx = Depends(get_ctx)):
+    ctx.require_editor()
+    rate_limit(f"refresh:{ctx.workspace.id}", 30, 3600)
+    b = current_brand(ctx)
+    prods = [ctx.get(Product, pid) for pid in body.product_ids]
+    out = catalogue_mod.refresh(ctx.db, b, prods, catalogue_mod.get_source(b))
+    ctx.db.commit()
+    return out
+
+
 @router.get("/products")
 def list_products(ctx: Ctx = Depends(get_ctx)):
     b = current_brand(ctx, required=False)
@@ -246,20 +322,41 @@ async def upload_asset(file: UploadFile = File(...), alt_text: str = Form(""), k
 
 
 @router.get("/assets")
-def list_assets(ctx: Ctx = Depends(get_ctx)):
-    rows = ctx.db.execute(select(Asset).where(Asset.workspace_id == ctx.workspace.id).order_by(Asset.id.desc())
-                          .limit(200)).scalars().all()
+def list_assets(source: str = "", platform: str = "", campaign_id: int | None = None, ctx: Ctx = Depends(get_ctx)):
+    q = select(Asset).where(Asset.workspace_id == ctx.workspace.id)
+    if source:
+        q = q.where(Asset.source.in_(source.split(",")))
+    if campaign_id:
+        q = q.where(Asset.campaign_id == campaign_id)
+    rows = ctx.db.execute(q.order_by(Asset.id.desc()).limit(400)).scalars().all()
+    if platform:
+        rows = [a for a in rows if (a.meta or {}).get("platform") == platform]
     return [S.asset(a) for a in rows]
 
 
+@router.get("/assets/{aid}")
+def asset_detail(aid: int, ctx: Ctx = Depends(get_ctx)):
+    return S.asset(ctx.get(Asset, aid), full=True)
+
+
 @router.get("/assets/{aid}/file")
-def asset_file(aid: int, ctx: Ctx = Depends(get_ctx)):
+def asset_file(aid: int, format: str = "", download: bool = False, ctx: Ctx = Depends(get_ctx)):
     a = ctx.get(Asset, aid)
     path = asset_service.store().path(a.storage_key)
     if not path.exists():
         raise ApiError(404, "File missing.", "not_found")
     headers = {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'", "X-Content-Type-Options": "nosniff",
                "Cache-Control": "private, max-age=3600"}
+    name = a.filename.rsplit(".", 1)[0]
+    if format in ("png", "jpg") and a.content_type in ("image/jpeg", "image/png"):
+        from ...creative.render import convert
+
+        data, ctype = convert(path.read_bytes(), format)
+        if download:
+            headers["Content-Disposition"] = f'attachment; filename="{name}.{format}"'
+        return Response(data, media_type=ctype, headers=headers)
+    if download:
+        headers["Content-Disposition"] = f'attachment; filename="{a.filename}"'
     return FileResponse(path, media_type=a.content_type, headers=headers)
 
 

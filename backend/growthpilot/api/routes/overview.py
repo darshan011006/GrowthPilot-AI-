@@ -3,10 +3,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 
+from ... import usage
 from ...adapters import available_adapters
 from ...config import get_settings
 from ...models import (
     AgentRun,
+    ApprovalRequest,
     Brand,
     Campaign,
     ChannelConnection,
@@ -16,6 +18,7 @@ from ...models import (
     Product,
     Recommendation,
     ResearchFinding,
+    utcnow,
 )
 from ...services import analytics
 from .. import serializers as S
@@ -53,11 +56,17 @@ def overview(ctx: Ctx = Depends(get_ctx)):
     exps = db.execute(select(Experiment).where(Experiment.workspace_id == ws).order_by(Experiment.created_at.desc())
                       .limit(3)).scalars().all()
     stats = analytics.summary(db, ws)
+    pending_requests = db.execute(select(func.count(ApprovalRequest.id)).where(
+        ApprovalRequest.workspace_id == ws, ApprovalRequest.status == "pending")).scalar_one()
+    brand = db.execute(select(Brand).where(Brand.workspace_id == ws).order_by(Brand.id)).scalars().first()
     next_actions = []
     if not has_brand:
         next_actions.append({"label": "Set up your Brand Brain", "href": "/brand"})
     elif n_products == 0:
         next_actions.append({"label": "Add products to the catalogue", "href": "/brand#products"})
+    if pending_requests:
+        next_actions.append({"label": f"{pending_requests} budget or strategy request(s) need a decision",
+                             "href": "/approvals"})
     if counts.get("in_review"):
         next_actions.append({"label": f"Review {counts['in_review']} post(s) waiting for approval", "href": "/approvals"})
     if not conns:
@@ -76,6 +85,9 @@ def overview(ctx: Ctx = Depends(get_ctx)):
         "opportunities": [S.finding(f) for f in gaps], "experiments": [S.experiment(e) for e in exps],
         "connections": [S.connection(c) for c in conns],
         "performance": {k: stats[k] for k in ("data_source", "freshness", "published", "with_metrics", "totals",
-                                              "by_content_type")},
-        "next_actions": next_actions, "has_brand": has_brand,
+                                              "by_content_type", "by_platform")},
+        "next_actions": next_actions, "has_brand": has_brand, "pending_requests": pending_requests,
+        "usage": {"month_cost_usd": usage.spent(db, workspace_id=ws, since=usage.month_start(utcnow())), "monthly_budget_usd": ctx.workspace.monthly_budget_usd},
+        "brand": {"name": brand.name, "is_synthetic": brand.is_synthetic, "colors": brand.colors,
+                  "catalogue": (brand.catalogue_source or {}).get("label")} if brand else None,
     }

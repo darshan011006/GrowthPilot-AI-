@@ -27,7 +27,11 @@ def get_workspace(ctx: Ctx = Depends(get_ctx)):
     invites = ctx.db.execute(select(Invite).where(Invite.workspace_id == ws.id, Invite.accepted_at.is_(None),
                                                   Invite.expires_at > utcnow())).scalars()
     return {"workspace": {"id": ws.id, "name": ws.name, "timezone": ws.timezone, "agent_max_steps": ws.agent_max_steps,
-                          "agent_token_budget": ws.agent_token_budget, "agent_timeout_minutes": ws.agent_timeout_minutes},
+                          "agent_token_budget": ws.agent_token_budget, "agent_timeout_minutes": ws.agent_timeout_minutes,
+                          "run_budget_usd": ws.run_budget_usd, "monthly_budget_usd": ws.monthly_budget_usd,
+                          "approval_threshold_usd": ws.approval_threshold_usd,
+                          "search_requests_per_run": ws.search_requests_per_run,
+                          "search_requests_per_day": ws.search_requests_per_day},
             "members": [{"id": m.id, "user_id": m.user_id, "name": m.user.name, "email": m.user.email, "role": m.role}
                         for m in members],
             "invites": [{"id": i.id, "email": i.email, "role": i.role, "expires_at": S.dt(i.expires_at)} for i in invites],
@@ -40,6 +44,11 @@ class WorkspaceIn(BaseModel):
     agent_max_steps: int = Field(ge=5, le=200)
     agent_token_budget: int = Field(ge=10_000, le=5_000_000)
     agent_timeout_minutes: int = Field(ge=1, le=120)
+    run_budget_usd: float = Field(default=0.5, ge=0, le=100)
+    monthly_budget_usd: float = Field(default=10.0, ge=0, le=10_000)
+    approval_threshold_usd: float = Field(default=0.25, ge=0, le=100)
+    search_requests_per_run: int = Field(default=8, ge=0, le=100)
+    search_requests_per_day: int = Field(default=40, ge=0, le=2000)
 
 
 @router.put("/settings")
@@ -140,11 +149,12 @@ def audit_log(page: int = 1, action: str = "", ctx: Ctx = Depends(get_ctx)):
 
 class ResetIn(BaseModel):
     confirm: str
+    brand: str = "poojaloka"
 
 
 @router.post("/demo/reset")
 def demo_reset(body: ResetIn, ctx: Ctx = Depends(get_ctx)):
-    """Delete this workspace's marketing data and reload the fictional demo brand. Demo mode only."""
+    """Delete this workspace's marketing data and reload a demo brand. Demo mode only."""
     ctx.require_owner()
     if not get_settings().is_demo:
         raise ApiError(400, "Demo reset is only available in demo mode.", "demo_only")
@@ -154,7 +164,9 @@ def demo_reset(body: ResetIn, ctx: Ctx = Depends(get_ctx)):
                                                  AgentRun.status == RunStatus.RUNNING)).first()
     if busy:
         raise ApiError(409, "An agent run is in progress; cancel it first.", "busy")
-    result = fixtures.seed(ctx.db, ctx.workspace.id, ctx.user.id)
+    if body.brand not in fixtures.BRANDS:
+        raise ApiError(400, "Unknown demo brand.", "validation")
+    result = fixtures.seed(ctx.db, ctx.workspace.id, ctx.user.id, body.brand)
     ctx.db.commit()
     return {"ok": True, **result}
 
