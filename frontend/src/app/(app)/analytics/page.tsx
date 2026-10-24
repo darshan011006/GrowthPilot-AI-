@@ -69,12 +69,13 @@ export default function AnalyticsPage() {
             <Stat label="Posts with metrics" value={`${data.with_metrics}/${data.published}`} hint={data.missing_metrics ? `${data.missing_metrics} missing` : undefined} />
             <Stat label="Reach (sum)" value={fmtNum(t.reach)} />
             <Stat label="Interactions" value={fmtNum(t.interactions)} hint="likes + comments + shares + saves" />
-            <Stat label="Saves" value={fmtNum(t.saves)} />
+            <Stat label="Saves" value={fmtNum(t.saves)} hint="saves per reach is the Poojaloka demo's primary metric" />
             <Stat label="Engagement rate" value={fmtPct(t.engagement_rate_by_reach)} hint="interactions ÷ reach" />
           </div>
           <div className="grid gap-5 lg:grid-cols-2">
             <GroupChart title="By content type" groups={data.by_content_type} />
             <GroupChart title="By content pillar" groups={data.by_pillar} />
+            <GroupChart title="By platform" groups={data.by_platform} />
             {data.daily.length > 1 && (
               <Card title="Over time" subtitle="Reach and interactions by publish date." className="lg:col-span-2">
                 <div className="h-64">

@@ -34,6 +34,14 @@ PILLAR_TEMPLATES = [
 
 
 def template_for(item: ContentItem) -> str:
+    from ..agent.generation import pillar_kind
+
+    kind = pillar_kind(item.pillar)
+    if kind in ("guide", "know_how"):
+        return "festive" if kind == "guide" and re.search(r"deepavali|diwali|navaratri|festival", item.hook or "", re.I) \
+            and item.content_type != "carousel" else "educational"
+    if kind == "offer":
+        return "festive"
     key = f"{item.pillar} {item.title}".lower()
     for words, tpl in PILLAR_TEMPLATES:
         if any(w in key for w in words):
@@ -77,9 +85,13 @@ def _price_ok(p: Product) -> bool:
 
 
 def _clean(text: str, limit: int) -> str:
+    """Drop hashtags and shorten at a word boundary (never mid-word); "…" marks a shortened line."""
     text = re.sub(r"#\w+", "", text or "").strip()
     text = re.sub(r"\s+", " ", text)
-    return text[:limit].rstrip(" ,;:-")
+    if len(text) <= limit:
+        return text.rstrip(" ,;:-")
+    cut = text[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,;:-")
+    return f"{cut}…"
 
 
 def render_for_item(db: Session, item: ContentItem, *, platform: str | None = None, template: str | None = None,
@@ -101,9 +113,9 @@ def render_for_item(db: Session, item: ContentItem, *, platform: str | None = No
     sub = ""
     if p and tpl not in ("educational", "carousel_slide", "awareness"):
         sub = p.name if p.name.lower() not in head.lower() else (p.category or "")
-    lines = [ _clean(x, 60) for x in (body or []) if x.strip()]
+    lines = [_clean(x, 110) for x in (body or []) if x.strip()]
     if not lines and tpl == "educational" and item.carousel_outline:
-        lines = [_clean(x, 60) for x in item.carousel_outline[1:4]]
+        lines = [_clean(x, 110) for x in item.carousel_outline[1:4]]
     badge = ""
     occ = re.search(r"\b(Deepavali|Diwali|Navaratri|Dussehra|Janmashtami|Ganesh Chaturthi|Karthika|Tulsi Vivah|"
                     r"Sankranti|Ugadi|Varamahalakshmi)\b", f"{item.title} {item.hook} {item.caption}", re.I)
@@ -111,7 +123,7 @@ def render_for_item(db: Session, item: ContentItem, *, platform: str | None = No
         badge = occ.group(1).title()
     cta = _clean(item.cta, 34) if item.cta and len(item.cta) <= 34 else ""
 
-    on_image = " ".join(x for x in [head, sub, " ".join(lines), price, cta] if x)
+    on_image = "\n".join(x for x in [head, sub, *lines, price, cta] if x)
     catalogue = list(db.query(Product).filter(Product.brand_id == brand.id))
     claim_checks = [c.__dict__ for c in check_product_claims(on_image, brand, prods, catalogue)]
     claim_fail = [c for c in claim_checks if c["status"] == "fail"]

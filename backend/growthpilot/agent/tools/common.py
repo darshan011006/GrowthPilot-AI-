@@ -69,7 +69,7 @@ def brief_for(db, b: Brand, *, workspace_id: int, params: dict | None = None, st
         "focus_category": params.get("category"), "geography": params.get("geography") or b.location,
         "occasion": params.get("occasion"), "learnings": learnings, "open_recommendations": recs,
         "festival": festival, "articles": (state.get("articles") or [
-            {"title": a.get("title"), "excerpt": a.get("excerpt"), "slug": a.get("slug")}
+            {"title": a.get("title"), "excerpt": a.get("excerpt"), "slug": a.get("slug"), "body": (a.get("body") or "")[:1500]}
             for a in (src.get("articles") or [])])[:5],
     }
 

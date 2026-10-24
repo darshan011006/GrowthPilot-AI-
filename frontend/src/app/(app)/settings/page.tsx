@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { fmtDate, fmtNum } from "@/lib/format";
 
 interface SettingsData {
-  workspace: { id: number; name: string; timezone: string; agent_max_steps: number; agent_token_budget: number; agent_timeout_minutes: number };
+  workspace: { id: number; name: string; timezone: string; agent_max_steps: number; agent_token_budget: number; agent_timeout_minutes: number; run_budget_usd: number; monthly_budget_usd: number; approval_threshold_usd: number; search_requests_per_run: number; search_requests_per_day: number };
   members: { id: number; user_id: number; name: string; email: string; role: string }[];
   invites: { id: number; email: string; role: string; expires_at: string }[];
   role: string;
@@ -30,6 +30,7 @@ export default function SettingsPage() {
   const [link, setLink] = useState<string | null>(null);
   const [pw, setPw] = useState({ current_password: "", new_password: "" });
   const [resetText, setResetText] = useState("");
+  const [resetBrand, setResetBrand] = useState<"poojaloka" | "aranya">("poojaloka");
   const act = useAction();
   const [ok, setOk] = useState<string | null>(null);
 
@@ -59,6 +60,7 @@ export default function SettingsPage() {
                 <Field label="Token budget">{(id) => <Input id={id} type="number" min={10000} step={10000} value={ws.agent_token_budget} onChange={(e) => setWs({ ...ws, agent_token_budget: Number(e.target.value) })} />}</Field>
                 <Field label="Timeout (min)">{(id) => <Input id={id} type="number" min={1} max={120} value={ws.agent_timeout_minutes} onChange={(e) => setWs({ ...ws, agent_timeout_minutes: Number(e.target.value) })} />}</Field>
               </div>
+              <p className="mb-3 text-xs text-muted">Cost budgets and search caps are on the <a href="/usage" className="text-accent hover:underline">Usage & Budgets</a> page.</p>
               {can.own && <Button variant="primary" busy={act.busy} onClick={async () => { const { id, ...body } = ws; void id; if (await act.run(() => api.put("/api/settings", body))) { done("Saved."); setWs(null); refresh(); reload(); } }}>Save</Button>}
             </fieldset>
           </Card>
@@ -69,10 +71,11 @@ export default function SettingsPage() {
           </Card>
           {state?.mode === "demo" && can.own && (
             <Card title="Demo data reset" className="lg:col-span-2">
-              <p className="mb-2 text-sm text-muted">Deletes this workspace&apos;s marketing data (brand, products, campaigns, content, runs, metrics) and reloads the fictional demo brand. Users and settings are kept. Demo mode only.</p>
+              <p className="mb-2 text-sm text-muted">Deletes this workspace&apos;s marketing data (brand, products, campaigns, content, runs, metrics, usage) and reloads a demo brand. Users and settings are kept. Demo mode only.</p>
               <div className="flex flex-wrap items-center gap-2">
+                <Select aria-label="Demo brand" className="w-auto" value={resetBrand} onChange={(e) => setResetBrand(e.target.value as "poojaloka" | "aranya")}><option value="poojaloka">Poojaloka (real catalogue snapshot)</option><option value="aranya">Aranya Living (fictional)</option></Select>
                 <Input aria-label="Type RESET to confirm" placeholder="Type RESET" value={resetText} onChange={(e) => setResetText(e.target.value)} className="max-w-40" />
-                <Button variant="danger" busy={act.busy} disabled={resetText !== "RESET"} onClick={async () => { if (await act.run(() => api.post("/api/demo/reset", { confirm: "RESET" }))) { setResetText(""); done("Demo data reset."); } }}>Reset demo data</Button>
+                <Button variant="danger" busy={act.busy} disabled={resetText !== "RESET"} onClick={async () => { if (await act.run(() => api.post("/api/demo/reset", { confirm: "RESET", brand: resetBrand }))) { setResetText(""); done("Demo data reset."); } }}>Reset demo data</Button>
               </div>
             </Card>
           )}

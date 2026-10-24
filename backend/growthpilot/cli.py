@@ -107,6 +107,9 @@ def cmd_demo_setup(args) -> None:
             ws_id = ws.id
         else:
             ws_id = db.execute(select(Membership.workspace_id).where(Membership.user_id == user.id)).scalars().first()
+            ws = db.get(Workspace, ws_id)
+            if ws.name.endswith("(demo)"):
+                ws.name = "Poojaloka (demo)" if args.brand == "poojaloka" else "Aranya Living (demo)"
         result = fixtures.seed(db, ws_id, user.id, args.brand)
     print(f"Demo data loaded: {args.brand} ({result['products']} products, history campaign "
           f"#{result['history_campaign_id']}).")

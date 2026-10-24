@@ -135,7 +135,11 @@ def brand_phrases(brand: Brand) -> list[str]:
     out = []
     for f in src.get("festivals") or []:
         out += [str(x) for x in f.get("itemsNeeded") or []]
-    out += [str(a.get("title", "")) for a in src.get("articles") or []]
+    for a in src.get("articles") or []:
+        out.append(str(a.get("title", "")))
+        out += [x.strip() for x in re.split(r"(?<=[.!?])\s+", str(a.get("body") or "")) if len(x.strip()) > 20]
+    for f in src.get("festivals") or []:
+        out += [x.strip() for x in re.split(r"(?<=[.!?])\s+", str(f.get("poojaVidhi") or "")) if len(x.strip()) > 20]
     return sorted({x for x in out if x.strip()}, key=len, reverse=True)
 
 
@@ -236,6 +240,12 @@ def check_product_claims(text: str, brand: Brand, referenced: list[Product], cat
     lowered = text.lower()
     for ph in quoted:
         lowered = re.sub(re.escape(ph.lower()), " ", lowered)
+    # Lines that quote (or shorten) a sentence from the brand's own guides/articles are sourced, not product claims.
+    sources = [_norm(x) for x in brand_phrases(brand) if len(x) > 20]
+    for line in re.split(r"\n+", lowered):
+        core = _norm(re.sub(r"^[•\-\d.\s]+|[….!?\s]+$", "", line))
+        if len(core) >= 20 and any(core in src_ for src_ in sources):
+            lowered = lowered.replace(line, " ")
     ref_mats = {_norm(x) for p in products for x in (p.materials or []) + (p.finishes or [])}
     all_mats = {_norm(x) for p in catalogue for x in (p.materials or []) + (p.finishes or [])}
     for mat in MATERIALS:

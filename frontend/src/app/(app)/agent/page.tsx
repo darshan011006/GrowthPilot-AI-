@@ -29,12 +29,12 @@ export default function AgentPage() {
     <div>
       <PageHeader
         title="Agent Command Centre"
-        subtitle="Give GrowthPilot a marketing goal. It plans, chooses tools, inspects real results, re-plans when something is missing, and stops for your approval before anything is scheduled."
+        subtitle="Give GrowthPilot one marketing goal. An orchestrator delegates to six specialists (research, strategy, creative, verification, distribution, analyst), re-plans from real tool results, stays within budget, and stops for your approval before anything is scheduled on any platform."
       />
       <Card className="mb-6">
         <form onSubmit={submit}>
           <label htmlFor="goal" className="mb-1 block text-sm font-semibold">Goal</label>
-          <Textarea id="goal" rows={3} value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. Plan next week's Instagram campaign for our new sofa collection" />
+          <Textarea id="goal" rows={3} value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. Create a seven-day Deepavali campaign across Instagram, Facebook, Pinterest and Threads" />
           {examples.data && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {examples.data.map((ex) => (
@@ -48,7 +48,7 @@ export default function AgentPage() {
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <Button variant="primary" type="submit" busy={start.busy} disabled={!can.edit || goal.trim().length < 5}>Start run</Button>
             <span className="text-xs text-muted">
-              Planner: {state?.mode === "demo" ? "deterministic demo planner (no LLM, labelled fixtures)" : "Claude, choosing from 26 typed tools"}.
+              Planner: {state?.mode === "demo" ? "deterministic demo orchestrator (no LLM, no paid calls, labelled fixtures)" : "the configured LLM (Gemini or Claude), choosing from 26 typed, role-tagged tools"}.
             </span>
           </div>
         </form>
@@ -61,7 +61,7 @@ export default function AgentPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs uppercase tracking-wide text-muted">
-                <tr><th className="py-2 pr-3">Goal</th><th className="pr-3">Status</th><th className="pr-3">Steps</th><th className="pr-3">Planner</th><th>Started</th></tr>
+                <tr><th className="py-2 pr-3">Goal</th><th className="pr-3">Status</th><th className="pr-3">Steps</th><th className="pr-3">Cost (est.)</th><th className="pr-3">Planner</th><th>Started</th></tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {runs.data.map((r) => (
@@ -69,6 +69,7 @@ export default function AgentPage() {
                     <td className="py-2 pr-3"><Link href={`/agent/${r.id}`} className="font-medium hover:underline">{r.goal}</Link></td>
                     <td className="pr-3"><RunStatusBadge status={r.status} /></td>
                     <td className="pr-3 text-muted">{r.step_count}/{r.max_steps}</td>
+                    <td className="pr-3 text-muted">${(r.cost_usd ?? 0).toFixed(4)}</td>
                     <td className="pr-3 text-muted">{r.planner}</td>
                     <td className="text-muted">{fmtRelative(r.created_at)}</td>
                   </tr>

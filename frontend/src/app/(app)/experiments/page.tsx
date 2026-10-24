@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCan } from "@/components/auth";
-import { SyntheticBadge } from "@/components/domain";
+import { PlatformChip, SyntheticBadge } from "@/components/domain";
 import { Alert, Badge, Button, Card, Empty, Loading, PageHeader, useAction, useApi } from "@/components/ui";
 import { api } from "@/lib/api";
 import { fmtDate, fmtPct } from "@/lib/format";
@@ -40,15 +40,19 @@ export default function ExperimentsPage() {
                     <div className="mb-1 text-xs font-semibold uppercase text-muted">Variants</div>
                     {e.variants.map((v) => (
                       <div key={v.label} className="mb-1"><strong>{v.label}</strong>: {v.description}
-                        <div className="text-xs text-muted">{per[v.label] ? `n=${per[v.label].n} · mean ER ${fmtPct(per[v.label].mean_engagement_rate)}` : `${e.variant_posts?.[v.label] ?? 0} published post(s)`}</div></div>
+                        <div className="text-xs text-muted">{per[v.label] ? `n=${per[v.label].n} · mean ${e.primary_metric.replace(/_/g, " ")} ${fmtPct(per[v.label].mean ?? per[v.label].mean_engagement_rate, 2)}` : `${e.variant_posts?.[v.label] ?? 0} published post(s)`}</div></div>
                     ))}
                   </div>
                   <div className="text-sm">
                     <div className="mb-1 text-xs font-semibold uppercase text-muted">Success criterion</div>
                     {e.success_criteria.map((c, i) => <div key={i}>{c.metric.replace(/_/g, " ")}: {c.variant || "B"} vs {c.baseline || "A"} lift ≥ {fmtPct(c.target, 0)}</div>)}
                     <div className="text-xs text-muted">Minimum {e.min_sample_per_variant} posts per variant</div>
-                    {e.result?.lift !== undefined && <div className="mt-2">Observed lift <strong>{fmtPct(e.result.lift)}</strong>, p≈{e.result.p_value?.toFixed(3)}</div>}
-                    {e.result?.method && <div className="mt-1 text-xs text-muted">{e.result.method}</div>}
+                    <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">Primary metric: <Badge>{e.primary_metric.replace(/_/g, " ")}</Badge>{e.result?.platform && <>on <PlatformChip platform={e.result.platform} withLabel /></>}</div>
+                    {e.baseline?.note && <div className="mt-1 text-xs text-muted">Baseline: {e.baseline.value != null ? fmtPct(e.baseline.value, 2) : "—"} — {e.baseline.note}</div>}
+                    {e.result?.lift !== undefined && <div className="mt-2">Observed lift <strong>{fmtPct(e.result.lift)}</strong>, p≈{e.result.p_value?.toFixed(3)} {e.confidence && <Badge tone={e.confidence === "high" ? "ok" : e.confidence === "medium" ? "info" : "warn"}>confidence {e.confidence}</Badge>}</div>}
+                    {e.result?.vs_historical_baseline && <div className="mt-1 text-xs">vs earlier posts: <strong>{fmtPct(e.result.vs_historical_baseline.lift)}</strong> (n={e.result.vs_historical_baseline.baseline_n})</div>}
+                    {(e.comparison_method || e.result?.method) && <div className="mt-1 text-xs text-muted">{e.comparison_method || e.result?.method}</div>}
+                    <div className="mt-1 text-xs text-muted">Evaluation window: {e.evaluation_window_days} days</div>
                   </div>
                   <div className="text-sm">
                     <div className="mb-1 text-xs font-semibold uppercase text-muted">What we learned</div>
@@ -72,9 +76,14 @@ export default function ExperimentsPage() {
                 {r.rationale && <p className="mt-1 text-muted">Why: {r.rationale}</p>}
                 {r.uncertainty && <p className="mt-1 text-xs text-muted">Uncertainty: {r.uncertainty}</p>}
                 {r.evidence.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{r.evidence.map((e, i) => <Badge key={i}>{e.type}: {e.summary}</Badge>)}</div>}
+                {r.proposed_change?.type && (
+                  <div className="mt-2 rounded-lg border border-line bg-panel-2 p-2 text-xs"><strong>Proposed change:</strong> {r.proposed_change.detail}
+                    {r.status === "applied" && <Badge tone="ok" className="ml-1">applied {fmtDate(r.decided_at, can.tz)}</Badge>}</div>
+                )}
                 {can.edit && r.status === "open" && (
-                  <div className="mt-2 flex gap-2">
-                    <Button size="sm" onClick={async () => { await act.run(() => api.post(`/api/recommendations/${r.id}/status`, { status: "accepted" })); recs.reload(); }}>Accept</Button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {r.proposed_change?.type && can.own && <Button size="sm" variant="primary" onClick={async () => { if (confirm(`Apply this change to the brand profile?\n\n${r.proposed_change.detail}`)) { await act.run(() => api.post(`/api/recommendations/${r.id}/apply`)); recs.reload(); } }}>Approve & apply change</Button>}
+                    <Button size="sm" onClick={async () => { await act.run(() => api.post(`/api/recommendations/${r.id}/status`, { status: "accepted" })); recs.reload(); }}>Accept (no automatic change)</Button>
                     <Button size="sm" variant="ghost" onClick={async () => { await act.run(() => api.post(`/api/recommendations/${r.id}/status`, { status: "dismissed" })); recs.reload(); }}>Dismiss</Button>
                   </div>
                 )}

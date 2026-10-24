@@ -8,7 +8,7 @@ from ...models import ContentItem, ContentStatus
 from ...services import creative as creative_service
 from ...services.content import EDITABLE_FIELDS, normalise_hashtags, update
 from ...services.errors import WorkflowError
-from ..generation import SlotContentOut, product_dict
+from ..generation import SlotContentOut, pillar_kind, product_dict
 from ..registry import Effect, Permission, Role, ToolContext, ToolError, ToolInput, ToolResult, tool
 from .common import brief, generator, items, products
 
@@ -38,6 +38,13 @@ def _pillar_counts(rows: list[ContentItem]) -> dict[int, int]:
 def apply(ctx: ToolContext, item: ContentItem, fields: dict, note: str) -> None:
     update(ctx.db, item, {k: v for k, v in fields.items() if k in EDITABLE_FIELDS}, user_id=None, role="editor",
            source=f"agent:{ctx.run.planner}", note=note)
+
+
+def _product_ids(item: ContentItem, out, prods: list[dict]) -> list[int]:
+    ids = [i for i in out.product_ids if i in {p["id"] for p in prods}]
+    if ids or pillar_kind(item.pillar) == "know_how":
+        return ids  # know-how posts are about a ritual or article, not a product
+    return list(item.product_ids or [])
 
 
 class ContentIdsIn(ToolInput):
@@ -115,7 +122,7 @@ def generate_caption(ctx: ToolContext, inp: CaptionIn) -> ToolResult:
         tokens += t
         apply(ctx, item, {"hook": out.hook[:500], "caption": out.caption, "hashtags": normalise_hashtags(out.hashtags),
                           "cta": out.cta[:255],
-                          "product_ids": [i for i in out.product_ids if i in {p["id"] for p in prods}] or item.product_ids},
+                          "product_ids": _product_ids(item, out, prods)},
               note)
         item.rationale = out.rationale[:2000]
         done.append(item.id)

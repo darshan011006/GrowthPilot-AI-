@@ -276,8 +276,8 @@ def analyse_trends(ctx: ToolContext, inp: TrendsIn) -> ToolResult:
         ctx.remember("festival", match)
     arts = (b.catalogue_source or {}).get("articles") or []
     if arts:
-        ctx.remember("articles", [{"title": a.get("title"), "excerpt": a.get("excerpt"), "slug": a.get("slug")}
-                                  for a in arts[:5]])
+        ctx.remember("articles", [{"title": a.get("title"), "excerpt": a.get("excerpt"), "slug": a.get("slug"),
+                                   "body": (a.get("body") or "")[:1500]} for a in arts[:5]])
     if ctx.settings.is_demo or not ctx.settings.search_configured:
         fixtures = ctx.db.execute(select(ResearchFinding).where(
             ResearchFinding.workspace_id == ctx.workspace_id, ResearchFinding.source_type == "fixture")).scalars().all()

@@ -170,6 +170,7 @@ def content(i: ContentItem, tz: ZoneInfo, full: bool = False) -> dict:
           "approved_at": dt(i.approved_at), "updated_at": dt(i.updated_at),
           "planned_local": local(i.planned_at, tz), "scheduled_local": local(i.scheduled_at, tz),
           "campaign_name": i.campaign.name if i.campaign else None,
+          "brand_name": i.brand.name if i.brand else None,
           "connection_name": i.connection.name if i.connection else None,
           "connection_adapter": i.connection.adapter if i.connection else None,
           "connection_live": bool(i.connection and not i.connection.adapter.startswith("demo_")),

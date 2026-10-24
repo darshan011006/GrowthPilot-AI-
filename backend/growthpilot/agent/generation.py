@@ -464,9 +464,13 @@ class DemoGenerator:
         elif kind == "know_how":
             title = article.get("title") or f"Preparing for {occasion}"
             excerpt = (article.get("excerpt") or "").strip()
+            points = [x.strip().rstrip(".") for x in re.split(r"(?<=[.!?])\s+", article.get("body") or "") if x.strip()]
+            points = [p if len(p) <= 110 else p[:107].rsplit(" ", 1)[0] + "…" for p in points][:3]
             hook = title
-            caption = (f"{excerpt}\n\n" if excerpt else "") + (f"Read the full guide on {site}." if site else "")
-            outline = [f"Cover: {title}", "Key point 1", "Key point 2", "Read more on our blog"]
+            caption = ((f"{excerpt}\n\n" if excerpt else "") + "".join(f"• {pt}.\n" for pt in points)
+                       + (f"\nRead the full guide on {site}." if site else ""))
+            outline = [f"Cover: {title}", *points, "Read the full guide"] if points else [f"Cover: {title}",
+                                                                                         "Read the full guide"]
             cta = "Read the full guide"
             rationale = "[Demo generator] Know-how post based on the store's own published article (source-reported)."
             pids = []
@@ -609,7 +613,9 @@ class DemoGenerator:
                 proposed_change=ProposedChange(type="pillar_focus", detail=f"Move “{top['key']}” to the top of the "
                                                "brand's content pillars so new campaigns plan it first.",
                                                value=top["key"])))
-        if len(platforms) >= 2:
+        low_gap = len(platforms) >= 2 and platforms[-1]["mean_engagement_rate"] < 0.7 * platforms[0][
+            "mean_engagement_rate"] and min(platforms[0]["n"], platforms[-1]["n"]) >= 5
+        if low_gap:
             low = platforms[-1]
             recs.append(RecommendationWithChange(
                 title=f"Reduce effort on {low['key']} until it shows traction{tag}",

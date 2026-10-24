@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   FileText,
   FlaskConical,
+  Images,
   LayoutDashboard,
   Megaphone,
   Menu,
@@ -15,7 +16,8 @@ import {
   Radar,
   Search,
   Settings,
-  Sofa,
+  Store,
+  Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -27,10 +29,10 @@ import { Loading } from "./ui";
 
 const NAV: { section: string; items: { href: string; label: string; icon: typeof Bot }[] }[] = [
   { section: "", items: [{ href: "/", label: "Overview", icon: LayoutDashboard }, { href: "/agent", label: "Agent Command Centre", icon: Bot }] },
-  { section: "Know", items: [{ href: "/brand", label: "Brand Brain", icon: Sofa }, { href: "/research", label: "Research", icon: Search }, { href: "/competitors", label: "Competitor Radar", icon: Radar }] },
-  { section: "Plan & create", items: [{ href: "/campaigns", label: "Campaigns", icon: Megaphone }, { href: "/content", label: "Creative Studio", icon: PenSquare }, { href: "/calendar", label: "Calendar", icon: CalendarDays }, { href: "/approvals", label: "Approval Inbox", icon: ClipboardCheck }] },
+  { section: "Know", items: [{ href: "/brand", label: "Brand Brain", icon: Store }, { href: "/research", label: "Research", icon: Search }, { href: "/competitors", label: "Competitor Radar", icon: Radar }] },
+  { section: "Plan & create", items: [{ href: "/campaigns", label: "Campaigns", icon: Megaphone }, { href: "/content", label: "Creative Studio", icon: PenSquare }, { href: "/assets", label: "Asset Library", icon: Images }, { href: "/calendar", label: "Calendar", icon: CalendarDays }, { href: "/approvals", label: "Approval Inbox", icon: ClipboardCheck }] },
   { section: "Learn", items: [{ href: "/analytics", label: "Analytics", icon: BarChart3 }, { href: "/experiments", label: "Experiments", icon: FlaskConical }, { href: "/reports", label: "Reports", icon: FileText }] },
-  { section: "Admin", items: [{ href: "/integrations", label: "Integrations", icon: Plug }, { href: "/settings", label: "Settings", icon: Settings }] },
+  { section: "Admin", items: [{ href: "/integrations", label: "Integrations", icon: Plug }, { href: "/usage", label: "Usage & Budgets", icon: Wallet }, { href: "/settings", label: "Settings", icon: Settings }] },
 ];
 
 export function ModeBanner() {
@@ -39,7 +41,7 @@ export function ModeBanner() {
   if (state.mode === "demo") {
     return (
       <div className="border-b border-line bg-demo-soft px-4 py-1.5 text-center text-xs font-semibold text-demo">
-        DEMO MODE — fictional brand, labelled fixtures, simulated publishing and synthetic metrics. Nothing leaves this computer.
+        DEMO MODE — real Poojaloka catalogue from a dated snapshot; competitors, trend notes and metrics are labelled fixtures; publishing is simulated on all seven platforms. Nothing leaves this computer.
       </div>
     );
   }
@@ -66,7 +68,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!state?.authenticated) return;
     let alive = true;
     const tick = () =>
-      api.get<{ id: number }[]>("/api/content?status=in_review").then((r) => alive && setReview(r.length)).catch(() => {});
+      Promise.all([api.get<{ id: number }[]>("/api/content?status=in_review"), api.get<{ id: number }[]>("/api/approval-requests")])
+        .then(([a, b]) => alive && setReview(a.length + b.length)).catch(() => {});
     tick();
     const t = setInterval(tick, 15000);
     return () => {

@@ -32,6 +32,24 @@ export interface Brand {
   permitted_sources: string[];
   logo_asset_id: number | null;
   is_synthetic: boolean;
+  content_pillars: string[];
+  languages: string[];
+  marketing_objectives: string[];
+  platform_preferences: string[];
+  posting_constraints: { max_posts_per_day?: number; posting_times?: string[]; notes?: string; [k: string]: unknown };
+  campaign_budget_usd: number | null;
+  fonts: string[];
+  profile_sources: { field: string; source_url: string | null; retrieved_at: string; note: string }[];
+  catalogue_source: { kind?: string; label?: string; base_url?: string; last_synced_at?: string; last_status?: string; last_error?: string; snapshot?: boolean; products_seen?: number; catalogue_total?: number; image_audit?: { products_total: number; stock_photo_hosts: Record<string, number>; own_upload_hosts: Record<string, number> } };
+  festivals: { name: string; nameKn: string | null; slug: string; importance: string; itemsNeeded: string[]; poojaVidhi: string }[];
+  articles: { title: string; slug: string; excerpt: string }[];
+  updated_at?: string;
+}
+
+export interface Freshness {
+  state: "fresh" | "aging" | "stale" | "manual";
+  age_hours: number | null;
+  label: string;
 }
 
 export interface Persona {
@@ -59,20 +77,70 @@ export interface Product {
   image_asset_id: number | null;
   is_active: boolean;
   is_synthetic: boolean;
+  mrp: number | null;
+  stock: number | null;
+  allow_backorder: boolean | null;
+  variants: { label: string; price: number | null; stock: number | null }[];
+  image_urls: string[];
+  image_kind: "product_photo" | "stock_photo" | "unverified" | "none";
+  name_local: string;
+  flags: Record<string, unknown>;
+  delivery: { available?: boolean; est_days?: number };
+  data_quality: { code: string; message: string }[];
+  source_url: string | null;
+  source_ref: string | null;
+  retrieved_at: string | null;
+  freshness: Freshness;
+}
+
+export interface RenderCheck {
+  code: string;
+  status: "pass" | "warn" | "fail";
+  message: string;
+  layer?: string;
 }
 
 export interface Asset {
   id: number;
   kind: string;
   source: string;
+  source_label: string;
   filename: string;
   content_type: string;
+  size_bytes?: number;
   width: number | null;
   height: number | null;
   alt_text: string;
   url: string;
   placeholder: boolean;
   is_synthetic: boolean;
+  origin_url?: string | null;
+  sha256?: string;
+  campaign_id?: number | null;
+  created_at?: string;
+  template?: string | null;
+  platform?: string | null;
+  content_id?: number | null;
+  photo_kind?: string | null;
+  background?: string | null;
+  checks_ok?: boolean | null;
+  meta?: {
+    template?: string;
+    platform?: string;
+    format?: { width: number; height: number; label: string };
+    variation?: number;
+    layers?: { kind: string; text: string; size: number; color: string; contrast: number | null }[];
+    checks?: RenderCheck[];
+    claim_checks?: Check[];
+    notes?: string[];
+    photo_kind?: string;
+    background?: string;
+    text_sources?: Record<string, string | null>;
+    content_id?: number;
+    content_version?: number;
+    ok?: boolean;
+    [k: string]: unknown;
+  };
 }
 
 export interface Finding {
@@ -179,14 +247,48 @@ export type ContentStatus =
   | "failed"
   | "cancelled";
 
+export interface PlatformSpec {
+  key: string;
+  label: string;
+  content_types: string[];
+  caption_max: number;
+  hashtags_max: number | null;
+  carousel_min: number;
+  carousel_max: number;
+  aspect_min: number;
+  aspect_max: number;
+  image_types: string[];
+  image_max_bytes: number;
+  render: { width: number; height: number; label: string; ratio: number };
+  requires_media: boolean;
+  link_in_caption: boolean;
+  tone: string;
+  audience_note: string;
+  auth: string;
+  scopes: string[];
+  eligibility: string;
+  publish_ops: string;
+  analytics: string[];
+  rate_limits: string;
+  live_adapter: string;
+  needs_from_you: string[];
+  verified: string;
+  sources: string[];
+  notes: string[];
+}
+
 export interface ContentItem {
   id: number;
   campaign_id: number | null;
   campaign_name: string | null;
+  brand_name?: string | null;
   experiment_id: number | null;
   variant_label: string;
   run_id: string | null;
   platform: string;
+  master_id: number | null;
+  asset_url: string | null;
+  approved_hash: string | null;
   content_type: string;
   pillar: string;
   title: string;
@@ -232,6 +334,9 @@ export interface ContentItem {
   assets?: Asset[];
   products?: Product[];
   final_caption?: string;
+  platform_spec?: PlatformSpec | null;
+  approval_intact?: boolean | null;
+  family?: ContentItem[];
   // approval-only
   campaign?: { id: number; name: string; objective: string; success_criteria: Criterion[] };
   hypothesis?: Hypothesis;
@@ -273,13 +378,22 @@ export interface Experiment {
   min_sample_per_variant: number;
   status: string;
   result: {
-    per_variant?: Record<string, { n: number; mean_engagement_rate: number | null; posts: number[]; missing_metrics: number }>;
+    per_variant?: Record<string, { n: number; mean_engagement_rate: number | null; mean?: number | null; posts: number[]; missing_metrics: number }>;
     lift?: number;
     p_value?: number;
     method?: string;
     alpha?: number;
     data_source?: string;
+    platform?: string | null;
+    metric?: string;
+    confidence?: string;
+    vs_historical_baseline?: { baseline_value: number; baseline_n: number; challenger_mean: number; lift: number; note: string };
   } | null;
+  intervention: string;
+  baseline: { metric?: string; value?: number | null; n?: number; source?: string; note?: string; filters?: Record<string, unknown> };
+  evaluation_window_days: number;
+  comparison_method: string;
+  confidence: string;
   conclusion: string;
   learnings: string;
   next_recommendation: string;
@@ -305,6 +419,30 @@ export interface Recommendation {
   status: string;
   is_synthetic: boolean;
   created_at: string;
+  proposed_change: { type?: string; detail?: string; value?: string };
+  decided_by: number | null;
+  decided_at: string | null;
+}
+
+export interface ApprovalRequest {
+  id: number;
+  run_id: string | null;
+  kind: "budget" | "strategy_change" | "paid_promotion" | "account_change";
+  title: string;
+  detail: string;
+  payload: { needed_usd?: number; scope?: string; budget_usd?: number; spent_usd?: number; tool?: string; message?: string };
+  status: "pending" | "approved" | "rejected";
+  decided_by: number | null;
+  decision_note: string;
+  requested_at: string;
+  decided_at: string | null;
+}
+
+export interface ChannelChoice {
+  platform: string;
+  role: string;
+  share: number;
+  reason: string;
 }
 
 export interface Campaign {
@@ -332,6 +470,13 @@ export interface Campaign {
   end_date: string | null;
   created_at: string;
   counts?: Record<string, number>;
+  objective_metric: string;
+  channel_mix: ChannelChoice[];
+  budget_usd: number | null;
+  budget_allocation: { item: string; usd: number; note: string }[];
+  baseline: { metric?: string; value?: number | null; n?: number; note?: string };
+  evaluation_window_days: number;
+  strategy: Record<string, unknown>;
 }
 
 export interface Connection {
@@ -368,9 +513,15 @@ export interface AdapterInfo {
   };
 }
 
+export type RoleKey = "orchestrator" | "research" | "strategy" | "creative" | "verification" | "distribution" | "analyst";
+
 export interface Step {
   seq: number;
-  phase: "observe" | "plan" | "tool" | "evaluate" | "replan" | "decision" | "approval" | "finish" | "error";
+  phase: "observe" | "plan" | "tool" | "evaluate" | "replan" | "decision" | "approval" | "finish" | "error" | "delegate";
+  role: RoleKey;
+  effect: string;
+  cost_usd: number;
+  evidence_ids: number[];
   tool: string | null;
   message: string;
   input: Record<string, unknown> | null;
@@ -391,6 +542,7 @@ export interface PlanStep {
   note?: string;
   inserted?: boolean;
   after_approval?: boolean;
+  role?: RoleKey;
 }
 
 export interface Run {
@@ -398,7 +550,12 @@ export interface Run {
   goal: string;
   intent: string;
   planner: string;
-  status: "queued" | "running" | "awaiting_approval" | "completed" | "blocked" | "failed" | "cancelled";
+  status: "queued" | "running" | "paused" | "awaiting_approval" | "completed" | "blocked" | "failed" | "cancelled";
+  cost_usd: number;
+  cost_budget_usd: number;
+  pause_requested: boolean;
+  recoveries: number;
+  approved_extra_usd?: number;
   plan: PlanStep[];
   step_count: number;
   max_steps: number;
@@ -423,6 +580,7 @@ export interface Group {
   key: string;
   n: number;
   mean_engagement_rate: number;
+  mean_saves_per_reach?: number | null;
   min: number;
   max: number;
   reach: number;
@@ -466,4 +624,30 @@ export interface ReportSummary {
   data_source: string;
   created_at: string;
   markdown?: string;
+}
+
+export interface ToolInfo {
+  name: string;
+  description: string;
+  permission: string;
+  implementation: string;
+  role: RoleKey;
+  role_label: string;
+  effects: string[];
+  input_schema: Record<string, unknown>;
+}
+
+export interface UsageSummary {
+  month_start: string;
+  month_cost_usd: number;
+  monthly_budget_usd: number | null;
+  run_budget_usd: number | null;
+  approval_threshold_usd: number | null;
+  search_requests_per_run: number | null;
+  search_requests_per_day: number | null;
+  by_provider: { provider: string; operation: string; calls: number; input_tokens: number; output_tokens: number; units: number; cost_usd: number; cached: number }[];
+  prices: { checked: string; token_prices_per_million: Record<string, [number, number]>; unit_prices: Record<string, number> };
+  note: string;
+  recent: { provider: string; operation: string; model: string; run_id: string | null; input_tokens: number; output_tokens: number; units: number; cost_usd: number; cached: boolean; created_at: string }[];
+  runs: { id: string; goal: string; status: string; cost_usd: number; budget_usd: number; tokens: number; created_at: string }[];
 }
