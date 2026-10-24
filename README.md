@@ -91,8 +91,8 @@ Docs: [Architecture](docs/ARCHITECTURE.md) · [Integrations](docs/API_INTEGRATIO
   7 posts → auto-resume and schedule → simulated publish and verification → synthetic analytics → evaluation run
   → experiment conclusion → report.
 - Dependency audit: `pip-audit` and `npm audit --omit=dev` report no known vulnerabilities.
-- **Not verified:** any call to a real external API (Anthropic, Brave, Meta), PostgreSQL, Docker Compose, and
-  GitHub Actions. See [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md).
+- **Not verified:** any call to a real external API (Anthropic, Brave, Meta), PostgreSQL and Docker Compose.
+  CI (tests, lint, types, build) runs on GitHub Actions. See [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md).
 
 ## Troubleshooting
 

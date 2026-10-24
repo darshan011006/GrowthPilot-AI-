@@ -51,7 +51,7 @@ test-backend:
 
 lint:
 	cd backend && .venv/bin/ruff check growthpilot tests migrations
-	cd frontend && $(NODE_ENV_PATH) npx eslint src && $(NODE_ENV_PATH) npx tsc --noEmit
+	cd frontend && $(NODE_ENV_PATH) npx eslint src && $(NODE_ENV_PATH) npx next typegen && $(NODE_ENV_PATH) npx tsc --noEmit
 
 build:
 	cd frontend && $(NODE_ENV_PATH) npm run build

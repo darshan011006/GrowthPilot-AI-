@@ -15,7 +15,7 @@ against the real service because no credentials were available:
 * **PostgreSQL**: supported through SQLAlchemy with the `psycopg` driver installed, but the suite runs on SQLite
   because PostgreSQL isn't installed here.
 * **Docker Compose / Dockerfiles**: written, never built (Docker isn't installed).
-* **GitHub Actions**: the workflow mirrors commands verified locally, but hasn't run (nothing pushed).
+* **GitHub Actions**: runs tests, lint, type check, build and dependency audits on every push. Docker images are not built in CI.
 * **Redis**: not used; the queue is database-backed. Rate limits are per process.
 
 ## Product limitations

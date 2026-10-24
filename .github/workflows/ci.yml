@@ -1,5 +1,4 @@
-# CI: the same commands verified locally with `make test` and `make build`.
-# Not yet run on GitHub Actions (the repository hasn't been pushed).
+# CI: the same commands as `make test` and `make build`.
 name: ci
 on:
   push:
@@ -35,6 +34,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npx eslint src
+      - run: npx next typegen  # generates LayoutProps/PageProps types that tsc needs
       - run: npx tsc --noEmit
       - run: npm run build
       - run: npm audit --omit=dev --audit-level=high || true

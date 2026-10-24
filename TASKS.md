@@ -7,7 +7,7 @@ Legend: [x] done and verified locally · [~] implemented, verified only with moc
 - [x] Install Node.js 24 LTS (Homebrew), project venv, frontend deps, Playwright Chromium (dev only)
 - [x] Repo layout (`backend/`, `frontend/`, `docs/`, `scripts/`), `.gitignore`, `.env.example`, Makefile
 - [x] Config validation per mode/env; demo/live database separation
-- [x] Local commits (not pushed)
+- [x] Git commits, pushed to the private GitHub repo
 
 ## Phase 1 — Foundation
 - [x] FastAPI backend, SQLAlchemy models, Alembic migration (clean-state migrate + drift check tested)
@@ -43,7 +43,7 @@ Legend: [x] done and verified locally · [~] implemented, verified only with moc
 - [x] Docs: README, ARCHITECTURE, API_INTEGRATIONS, SECURITY, DEMO_SCRIPT, KNOWN_LIMITATIONS, PITCH
 - [x] Browser e2e test (Playwright), lint/type checks, production build, dependency audit
 - [~] Docker Compose / Dockerfiles (written, not built: no Docker)
-- [~] CI workflow (written, not run)
+- [x] CI workflow runs on GitHub Actions (backend + frontend jobs)
 - [ ] Evaluation harness vs one-shot LLM baseline (needs LLM key)
 - [ ] Pinterest adapter, image generation provider, reels/video publishing
 - [ ] Facebook Login variant for competitor Business Discovery
@@ -52,4 +52,3 @@ Legend: [x] done and verified locally · [~] implemented, verified only with moc
 - [!] `LLM_API_KEY` (Anthropic) to run the live agent
 - [!] `SEARCH_API_KEY` (Brave) for live research
 - [!] Meta app + professional Instagram account + public HTTPS URL for real publishing
-- [!] Decide when to push to GitHub (not pushed)
