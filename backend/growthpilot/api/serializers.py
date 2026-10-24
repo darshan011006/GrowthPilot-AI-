@@ -131,6 +131,8 @@ def content(i: ContentItem, tz: ZoneInfo, full: bool = False) -> dict:
           "planned_local": local(i.planned_at, tz), "scheduled_local": local(i.scheduled_at, tz),
           "campaign_name": i.campaign.name if i.campaign else None,
           "connection_name": i.connection.name if i.connection else None,
+          "connection_adapter": i.connection.adapter if i.connection else None,
+          "connection_live": bool(i.connection and i.connection.adapter != "demo_instagram"),
           "validation_current": bool(i.validation and i.validation.get("version") == i.version)}
     if full:
         d["revisions"] = [{"version": r.version, "source": r.source, "note": r.note, "snapshot": r.snapshot,

@@ -143,7 +143,7 @@ class DemoPlanner:
 
         if status == "blocked":
             if tool == "search_web":
-                events.append(("replan", f"Live search unavailable ({error}). Switching to collect_trend_signals, "
+                events.append(("replan", f"Live search unavailable: {error.rstrip('.')}. Switching to collect_trend_signals, "
                                          "which uses the built-in calendar and labelled fixtures; findings will be "
                                          "marked as not live."))
             elif tool == "fetch_competitor_data":

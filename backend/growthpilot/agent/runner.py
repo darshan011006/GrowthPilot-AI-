@@ -171,8 +171,7 @@ class Runner:
                 return "error", None, f"internal error ({type(exc).__name__})"
             ms = int((time.monotonic() - t0) * 1000)
             self.run.tokens_used += result.tokens
-            label = f"{result.summary}" + (" [mock/fixture data]" if result.is_mock else "")
-            self.step("tool", label, tool=tool.name, inp=inp.model_dump(mode="json"), out=result.output,
+            self.step("tool", result.summary, tool=tool.name, inp=inp.model_dump(mode="json"), out=result.output,
                       is_mock=result.is_mock, attempt=attempt, duration_ms=ms, tokens=result.tokens)
             return "ok", result, ""
 

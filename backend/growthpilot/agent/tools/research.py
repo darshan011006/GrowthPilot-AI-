@@ -35,7 +35,8 @@ def search_web(ctx: ToolContext, inp: SearchIn) -> ToolResult:
     try:
         results = search_mod.search(inp.query, count=inp.count, country=inp.country, freshness=inp.freshness)
     except search_mod.SearchUnavailable as exc:
-        raise ToolBlocked(str(exc), blocker="search_not_configured") from exc
+        blocker = "demo_mode_no_external_calls" if ctx.settings.is_demo else "search_not_configured"
+        raise ToolBlocked(str(exc), blocker=blocker) from exc
     except search_mod.SearchError as exc:
         raise ToolError(str(exc), retryable=exc.retryable) from exc
     out = []
@@ -59,7 +60,7 @@ class InspectIn(ToolInput):
 def inspect_website(ctx: ToolContext, inp: InspectIn) -> ToolResult:
     if ctx.settings.is_demo:
         raise ToolBlocked("Website inspection makes external requests, which demo mode doesn't allow.",
-                          blocker="demo_mode_no_external")
+                          blocker="demo_mode_no_external_calls")
     b = brand(ctx)
     allowed = list(b.permitted_sources or [])
     if b.website:

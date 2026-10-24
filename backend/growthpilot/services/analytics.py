@@ -35,6 +35,11 @@ TRACK_FOR = timedelta(days=45)
 REFRESH_EVERY = timedelta(hours=3)
 
 
+def _iso(v) -> str | None:
+    """Naive UTC datetime → ISO string with an explicit UTC offset."""
+    return v.isoformat() + "+00:00" if v else None
+
+
 def latest(item: ContentItem) -> MetricSnapshot | None:
     return item.metrics[-1] if item.metrics else None
 
@@ -112,9 +117,9 @@ def item_rows(db: Session, workspace_id: int, campaign_id: int | None = None) ->
             "id": item.id, "title": item.title or item.caption[:60], "platform": item.platform,
             "content_type": item.content_type, "pillar": item.pillar or "unspecified",
             "campaign_id": item.campaign_id, "variant": item.variant_label, "experiment_id": item.experiment_id,
-            "published_at": item.published_at.isoformat() if item.published_at else None,
+            "published_at": _iso(item.published_at),
             "has_metrics": s is not None, "source": s.source if s else None,
-            "captured_at": s.captured_at.isoformat() if s else None,
+            "captured_at": _iso(s.captured_at) if s else None,
             "reach": s.reach if s else None, "views": s.views if s else None, "likes": s.likes if s else None,
             "comments": s.comments if s else None, "shares": s.shares if s else None,
             "saves": s.saves if s else None, "interactions": interactions(s), "engagement_rate": er(s),
