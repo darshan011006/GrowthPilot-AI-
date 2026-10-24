@@ -1,52 +1,91 @@
 # API integrations
 
 Status key: **Verified** = exercised against the real service. **Implemented** = built from current official
-docs and tested against a mocked API, not yet run with real credentials. **Demo** = mock adapter, labelled.
+docs and tested against a mocked API, not yet run with real credentials. **Simulated** = demo adapter, labelled.
 
-| Integration | Mode | Status | Needs from you |
-|---|---|---|---|
-| Anthropic Claude (LLM) | live | Implemented | API key |
-| Brave Search (web research) | live | Implemented | API key |
-| Public page fetch (`inspect_website`) | live | Implemented, tested with mocked pages | nothing; list permitted domains in Brand Brain |
-| Instagram API with Instagram Login | live | Implemented, tested against a mocked Meta API | Meta app, professional IG account, public HTTPS URL |
-| Signed webhook (Zapier / Make / n8n) | live | Implemented, tested against a mock receiver | a webhook URL |
-| Demo Instagram adapter | demo | Demo | nothing |
-| Image generation | — | Not implemented | — (upload real photos instead) |
-| Pinterest / TikTok / YouTube | — | Not implemented | — |
+| Integration | Mode | Status | Needs from you | Cost |
+|---|---|---|---|---|
+| Google Gemini (LLM) | live | Implemented | `GEMINI_API_KEY` | per token (free tier on some models) |
+| Anthropic Claude (LLM, optional) | live | Implemented | `LLM_API_KEY` | per token |
+| Brave Search | live | Implemented | `BRAVE_SEARCH_API_KEY` | $5 / 1,000 requests after a monthly credit |
+| Poojaloka storefront API (catalogue) | live (demo: snapshot) | Implemented; snapshot fetched for real on 2026-10-24 | nothing | free |
+| Public page fetch (`inspect_website`) | live | Implemented, mocked pages | permitted domains in Brand Brain | free |
+| Gemini image (AI backgrounds) | live, optional | Implemented | `IMAGE_GENERATION_PROVIDER=gemini` | ≈ $0.03 per image |
+| Instagram (Instagram Login) | live | Implemented, mocked Meta API | Meta app, professional account, public HTTPS | free API |
+| Facebook Pages | live | Implemented, mocked Graph API | same Meta app + Facebook Login for Business, a Page | free API |
+| Pinterest, X, LinkedIn, YouTube, Threads | demo | Specs + simulated adapters only | see table below | — |
+| Signed webhook (Zapier / Make / n8n) | live | Implemented, mock receiver | a webhook URL | — |
 
-Check any key from **Integrations → Test** (owner only). Results never show the key.
+Owners can check keys from **Integrations → Test connection**; each test is one small request and results never
+show the key. Prices are from the providers' pages on 2026-10-24 and are used only for estimates
+(**Usage & Budgets** shows the table); your provider's bill is authoritative.
 
 ---
 
-## Anthropic Claude
+## Google Gemini (default LLM)
 
-Used by the live agent planner (tool use) and live content generation (structured outputs).
+Used by the orchestrator (tool use) and by the Strategy, Creative, Distribution and Analyst roles (structured
+outputs). Implemented with the **Interactions API** over REST, server-side (`backend/growthpilot/llm/gemini_llm.py`),
+from Google's docs checked 2026-10-24:
 
-1. Create a key at https://console.anthropic.com → API keys. API usage is billed per token, separately from Claude.ai or Claude Code subscriptions.
-2. In `.env`: `LLM_PROVIDER=anthropic`, `LLM_API_KEY=…`, optionally `LLM_MODEL` (default `claude-opus-5-5`) and
-   `LLM_EFFORT` (default `medium`).
-3. Restart, then **Integrations → LLM → Test** (a free model-lookup call).
+* `POST https://generativelanguage.googleapis.com/v1beta/interactions`, header `x-goog-api-key`.
+* Stateless: `store: false`, the full history in `input` as steps — `user_input`, the model's own steps **exactly as
+  received** (including `thought` steps that carry signatures, which Gemini 3+ models require on later turns) and
+  `function_result` steps with `call_id`. GrowthPilot stores the raw steps on each assistant turn and replays them.
+* Tools: `{"type": "function", "name", "description", "parameters"}`; Pydantic `$ref`s are inlined first.
+* Structured output: `response_format: {"type": "text", "mime_type": "application/json", "schema": …}`; the text is
+  validated with the Pydantic model (schema mismatch → retryable error).
+* `generation_config.thinking_level` (`GEMINI_THINKING_LEVEL`, default medium); usage from
+  `usage.total_input_tokens / total_output_tokens / total_thought_tokens` is recorded per call.
+* Errors: 401/403 → key rejected; 404 → model not found; 429 and 5xx → retryable; `status: incomplete` → cut off;
+  messages are redacted and never include the key.
+* Connection test: `GET /v1beta/models/{model}` (free).
 
-Implementation (`backend/growthpilot/llm/anthropic_llm.py`): official `anthropic` Python SDK 2.x,
-`beta.messages.parse` with Pydantic `output_format` for schema-validated outputs, `beta.messages.create` with typed
-tools for the agent, `output_config.effort`, prompt caching, and `fallbacks="default"`
-(`server-side-fallback-2026-07-01`) so a safety refusal is retried on Anthropic's recommended fallback model.
-`refusal` and `max_tokens` stop reasons become clear errors. Per-run token use is tracked against the workspace
-budget.
+Setup: create a key at https://aistudio.google.com/apikey, set `GEMINI_API_KEY`, optionally `GEMINI_MODEL` (default
+`gemini-3.8-flash`, listed as stable on 2026-10-24; Flash prices rise on 2027-01-01). `LLM_PROVIDER=auto` picks
+Gemini when its key is present. A Gemini app subscription doesn't include API credits.
+
+## Anthropic Claude (optional)
+
+`LLM_PROVIDER=anthropic`, `LLM_API_KEY`, `LLM_MODEL` (default `claude-opus-5-5`), `LLM_EFFORT`. Official
+`anthropic` SDK: `beta.messages.parse` with Pydantic `output_format`, `beta.messages.create` with typed tools,
+prompt caching, and the server-side refusal fallback. Provider-specific fields (Gemini raw steps) are stripped
+before Claude sees a history, so a run is bound to one provider.
 
 ## Brave Search
 
-Used by `search_web` and `collect_trend_signals` in live mode.
+Used by `search_web` and `analyse_trends` (several queries run in parallel; only the HTTP requests are concurrent).
+`GET https://api.search.brave.com/res/v1/web/search`, header `X-Subscription-Token`, params `q`, `count`,
+`country`, `freshness`. Each result becomes a `source_reported` finding with URL, title, snippet and retrieval time;
+injection-like phrasing is flagged. Cost controls: database cache (`SEARCH_CACHE_HOURS`, default 24 h), caps per run
+and per day (Usage & Budgets), and a budget pre-check before each request. Set `BRAVE_SEARCH_API_KEY`
+(`SEARCH_API_KEY` is accepted as an alias).
 
-1. Get a key at https://brave.com/search/api/ (check current plans and quotas there).
-2. `.env`: `SEARCH_PROVIDER=brave`, `SEARCH_API_KEY=…`.
-3. **Integrations → Web research → Test** runs one search, which counts toward your quota.
+## Poojaloka catalogue (storefront API)
 
-Endpoint: `GET https://api.search.brave.com/res/v1/web/search` with header `X-Subscription-Token`, params `q`,
-`count`, `country`, `freshness`. Each result becomes a `source_reported` finding with URL, title, snippet and
-retrieval time. Snippets and titles are scanned for prompt-injection phrasing and flagged; they're never treated as
-instructions. Without a key, the agent says research is unavailable and continues with the built-in seasonal
-calendar.
+poojaloka.com is a single-page app that reads its catalogue from a public JSON API — the same requests any
+visitor's browser makes, with no login. GrowthPilot uses only the public read endpoints (checked 2026-10-24):
+`GET /api/products?page=&pageSize=100`, `GET /api/products/{slug}`, `/api/categories`, `/api/festivals`,
+`/api/hero`, `/api/articles`. It never calls admin, cart, order or account endpoints. `api.poojaloka.com` has no
+robots.txt (404); requests use an identified User-Agent, HTTPS, SSRF checks and a pause between pages.
+
+What's stored per product: name (and Kannada name), category, price, MRP, stock, back-order flag, variants, image
+URLs, the storefront URL (`https://poojaloka.com/product/<slug>`), the source id and the retrieval time. Materials
+are recorded only when the product's own name (or category) states them. Data-quality flags are computed, never
+"fixed": suspicious price (≤ ₹1), negative stock, out of stock, MRP above price (discount wording still needs an
+approved claim), generic template description, delivery conflict, duplicate name, possible test listing, and
+**no product photo**.
+
+**Image audit (2026-10-24):** 2,876 of 2,877 products show generic stock images from cdn.pixabay.com; one shows an
+upload on billing.poojaloka.com (a test listing). Stock images are labelled `stock_photo`, never downloaded as
+product photos and never shown as the product — posters use typographic product cards until the store uploads real
+photos (Asset Library → Upload, or the store's own uploads are downloaded automatically on sync).
+
+Live mode: **Brand Brain → Catalogue → Sync now** or `python -m growthpilot sync-catalogue [--full]`.
+`verify_product_facts` re-checks the selected products at the source before a campaign and flags changes; live mode
+refuses to publish a price older than `CATALOGUE_FRESH_HOURS` (default 24). Demo mode uses the bundled dated
+snapshot (`backend/growthpilot/demo/poojaloka_snapshot.json`, 40 products) and makes no requests unless
+`DEMO_ALLOW_CATALOGUE_SYNC=true`.
 
 ## Public page fetch (`inspect_website`)
 
@@ -107,6 +146,43 @@ metrics). Without insights permission, analytics show "not available" rather tha
 Reels and stories (they need video upload), Instagram via Facebook Login (needed for Business Discovery of
 competitor accounts), and comment/DM management.
 
+## Facebook Pages (Meta)
+
+Implemented in `backend/growthpilot/adapters/facebook.py` from Meta's Pages API docs (checked 2026-10-24); tested
+against a mocked Graph API only.
+
+1. Use the same Meta app; add **Facebook Login for Business** and register
+   `{BASE_URL}/api/integrations/facebook/callback` (shown on the Integrations page).
+2. Permissions requested: `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`. Outside development
+   mode these need App Review. The connecting person must be able to create content on the Page.
+3. **Integrations → Facebook Page → Connect**. The code is exchanged for a long-lived user token, then
+   `/me/accounts` returns Page tokens; only Pages with the `CREATE_CONTENT` task are kept (encrypted).
+4. Publishing: single photo `POST /{page-id}/photos (url, message)`; several photos uploaded unpublished then one
+   `POST /{page-id}/feed` with `attached_media`; text-only `POST /{page-id}/feed`. Verification:
+   `GET /{post-id}?fields=permalink_url,created_time`. Metrics: public counts (reactions, comments, shares) only —
+   Page insights (reach) are not collected, so reach shows "not available".
+
+## Other platforms
+
+Specs (limits, auth, eligibility, rate limits) live in `backend/growthpilot/platforms.py` and on the Integrations
+page. In demo mode each has a simulated adapter; there is no live adapter yet, and GrowthPilot never claims one.
+
+| Platform | Live publishing needs | Notes |
+|---|---|---|
+| Pinterest | Pinterest developer app, business account and board, Standard access | API v5 `POST /v5/pins`; title/description limits need re-checking |
+| X | Developer account on a tier that allows posting (paid plans) | 280 characters for standard accounts |
+| LinkedIn | Developer app, Community Management API approval, Page admin | Brand-story content, not product pushes |
+| YouTube | Google Cloud project with YouTube Data API, a video file | Video only: GrowthPilot produces a Shorts brief, never publishes images there; unaudited projects upload as private |
+| Threads | Meta app with the Threads use case | 500 characters (emoji count as UTF-8 bytes), carousels up to 20, 250 posts / 24 h |
+
+## AI backgrounds (optional)
+
+`IMAGE_GENERATION_PROVIDER=gemini` (default model `gemini-3.1-flash-lite-image`, ≈ $0.0336 per 1K image on
+2026-10-24) uses the Interactions API with `response_format: {"type": "image", "aspect_ratio": …}`. Only abstract
+backgrounds are requested — the prompt forbids text, products, people and deities — and the poster prints
+"AI-generated background" on the image. Each request is budget-checked and recorded. Without it, posters use the
+free template background.
+
 ## Signed webhook
 
 Hand approved posts to Zapier, Make, n8n or your own service, which then posts anywhere. **Integrations → Add
@@ -114,12 +190,6 @@ webhook** shows the signing secret once. Each request is a JSON `POST` with `X-G
 `X-GrowthPilot-Signature: sha256=HMAC_SHA256(secret, "<timestamp>.<raw body>")`. https only, private targets
 blocked (unless `ALLOW_INSECURE_WEBHOOKS=true` for local testing), and redirects aren't followed. Delivery is
 recorded as **Delivered**; whether it was actually posted is up to the receiver, and the UI says so.
-
-## Image generation
-
-Not implemented. `generate_image_asset` uses a real product photo when the product has one, otherwise a clearly
-marked SVG placeholder built from the image brief. The `IMAGE_GENERATION_*` variables are reserved for a future
-provider adapter.
 
 ## Environment variables
 See [`.env.example`](../.env.example) for the full list with comments.

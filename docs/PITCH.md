@@ -1,11 +1,12 @@
 # GrowthPilot AI — pitch
 
-**One line:** An AI marketing department for furniture brands that works from evidence, checks every claim, asks
-before it publishes, and learns from results.
+**One line:** An agentic marketing team in one app — research, strategy, creative, verification, distribution and
+analysis — that works from the brand's own data, checks every claim, asks before it publishes on any of seven
+platforms, and learns from results. First customer: Poojaloka, a Bengaluru pooja-essentials store.
 
 ## Problem
-Furniture is a considered, high-ticket purchase. Small and mid-sized furniture brands post constantly on Instagram
-but rarely learn what works. Generic AI content tools speed up posting but invent prices, materials, discounts and
+Small and mid-sized retailers (Poojaloka sells 2,877 pooja and festival products) post constantly across
+platforms but rarely learn what works, and festival seasons leave no time to check facts. Generic AI content tools speed up posting but invent prices, materials, discounts and
 warranties, which is a real legal and brand risk. They also have no memory of what worked last time.
 
 ## What GrowthPilot does
@@ -31,7 +32,8 @@ warranties, which is a real legal and brand risk. They also have no memory of wh
   switch that is off by default.
 
 ## What's real today
-Working backend, frontend, agent and demo end to end (63 automated tests plus a browser test). The Instagram,
+Working backend, frontend, agent and demo end to end on Poojaloka's real catalogue (96 automated tests plus a
+browser test). Gemini, Brave, Instagram and Facebook are implemented and mock-tested. The Instagram,
 Claude and Brave integrations are implemented to current docs and tested against mocks; they need credentials to
 verify. See KNOWN_LIMITATIONS.md. We make no claims about uplift, adoption or benchmarks; none have been measured.
 

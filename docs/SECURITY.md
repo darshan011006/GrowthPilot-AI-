@@ -17,11 +17,15 @@
 | Registration | First user creates the workspace; after that invite-only (hashed, single-use, 7-day tokens) | `routes/auth.py` |
 | Rate limiting | Login (10 per 15 min per IP+email), registration, agent runs, uploads, regeneration, integration tests | `api/deps.py` |
 | Secrets at rest | OAuth tokens and webhook secrets encrypted with Fernet (`ENCRYPTION_KEY`); never serialised | `security.py`, `serializers.py` |
-| Secret redaction | Errors and logs pass through `redact()` (bearer tokens, `access_token`, `client_secret`, `sk-ant-…`) | `security.py` |
+| Secret redaction | Errors and logs pass through `redact()` (bearer tokens, `access_token`, `client_secret`, `sk-ant-…`); provider errors never echo API keys (tested for Gemini) | `security.py`, `llm/` |
 | OAuth | Random `state`, stored hashed, single use, 10-minute expiry, bound to user and workspace; redirect URI fixed from config | `routes/integrations.py` |
 | SSRF | https only for research; private/loopback/link-local/reserved/multicast addresses blocked after DNS resolution; per-hop redirect checks; domain allow-list; 1 MB cap; no credentials in URLs; non-standard ports blocked | `research/net.py` |
 | Prompt injection | External text wrapped in `<untrusted_content>` with an explicit no-authority note; injection phrases flagged; tools enforce policy regardless of model output (publishing needs human approval in the database, not a model's say-so) | `research/web.py`, `agent/` |
-| Tool permissions | Typed schemas (`extra="forbid"`); no shell, SQL or arbitrary HTTP tools; publish tools refuse unapproved content | `agent/registry.py`, `agent/tools/execution.py` |
+| Tool permissions | Typed schemas (`extra="forbid"`); every tool declares its role and side effects; only `publish_approved_content` can post publicly and it refuses anything not approved, scheduled and unchanged; no shell, SQL or arbitrary HTTP tools | `agent/registry.py`, `agent/tools/` |
+| Approval binding | Approval stores a SHA-256 over the exact text, platform, type and image bytes; recomputed at scheduling and publishing; DB CHECK constraint ties approved/scheduled/published status to the current version | `services/content.py`, `models.py` |
+| Spending | Budget pre-checks before every paid call (run, campaign, monthly, single-step threshold); runs pause for owner approval; search caps and cache; estimates recorded per call | `usage.py`, `research/search.py` |
+| Catalogue ingestion | Public read-only storefront endpoints only, identified User-Agent, SSRF-checked, paced; stock images never treated as product photos; snapshot in demo (no network) | `catalogue/` |
+| Generated images | On-image text claim-checked; AI backgrounds forbid text, products, people and deities and are labelled on the image | `services/creative.py`, `creative/imagegen.py` |
 | Publishing safety | `LIVE_PUBLISHING_ENABLED` (off by default, forced off in demo); owner approval bound to version; separate publish authorisation; confirmation on schedule; send-time re-checks; unique idempotency key per version; no automatic re-publish after a crash; 6-hour lateness cutoff | `services/content.py`, `services/publishing.py` |
 | Uploads | 8 MB cap; type sniffed from bytes (JPEG/PNG only); random storage names; path traversal blocked; public URLs only for JPEG/PNG with unguessable tokens; SVG placeholders never public | `services/assets.py` |
 | Output safety | React escaping; no `dangerouslySetInnerHTML`; reports rendered by a React Markdown subset; external links `rel="noopener noreferrer nofollow"` | `frontend/src` |

@@ -2,53 +2,47 @@
 
 Legend: [x] done and verified locally · [~] implemented, verified only with mocks/tests · [ ] not done · [!] blocked on you
 
-## Phase 0 — Environment & repository
-- [x] Inspect machine: macOS 27 arm64, Python 3.11.7, Homebrew, Redis, SQLite, git, gh; no Node/Docker/Postgres
-- [x] Install Node.js 24 LTS (Homebrew), project venv, frontend deps, Playwright Chromium (dev only)
-- [x] Repo layout (`backend/`, `frontend/`, `docs/`, `scripts/`), `.gitignore`, `.env.example`, Makefile
-- [x] Config validation per mode/env; demo/live database separation
-- [x] Git commits, pushed to the private GitHub repo
+## Phase 0–1 — Environment, foundation (done earlier)
+- [x] Environment, repo, config validation, demo/live separation, auth/RBAC/CSRF/audit, migrations
+- [x] Git commits; pushed to the private GitHub repo on request (later work is local until you say so)
 
-## Phase 1 — Foundation
-- [x] FastAPI backend, SQLAlchemy models, Alembic migration (clean-state migrate + drift check tested)
-- [x] Auth (first-user owner, invites), sessions, CSRF, roles, audit log
-- [x] Fictional demo brand, catalogue, claims, personas, competitors, synthetic history; one-click reset
-- [x] Next.js frontend: navigation, overview, all pages, loading/error/empty states, mobile layout
+## Phase A — Inspect (2026-10-24)
+- [x] Reviewed the codebase, ran tests and the app
+- [x] Inspected poojaloka.com: SPA backed by a public storefront API; 2,877 products; 2,876 use stock images
 
-## Phase 2 — Working agent
-- [x] Run state, persisted steps, budgets (steps/tokens/time), cancellation, retries, approval pause/auto-resume
-- [x] 26 typed tools with schemas and permissions; mock usage labelled
-- [x] Deterministic demo planner with real branching
-- [~] Claude tool-use planner (tested with a scripted fake model)
-- [~] Brave web research with provenance (mocked API)
-- [x] Competitor analysis and gap finding (fixtures in demo; public website fetch in live, mocked)
-- [x] Hypotheses + transparent ranking; campaign + A/B experiment + calendar
-- [x] Creative briefs, captions, revision; labelled placeholder images
-- [x] Claim, brand and platform validation; approval inbox; version-bound approval
-- [x] Execution trace UI (polling real state)
+## Phase B — Agentic architecture
+- [x] Orchestrator + six specialist roles; delegation events; shared brand snapshot
+- [x] 26 typed tools with role and side-effect tags (incl. all names from the brief)
+- [x] Persistent runs: pause/resume/cancel/retry; crash recovery without redoing work
+- [x] Budget gate with owner approval; usage records; search cache and caps
+- [x] Non-content approval requests (budget, strategy, paid promotion, account change)
 
-## Phase 3 — Instagram
-- [x] Checked current Meta docs (Instagram API with Instagram Login)
-- [~] OAuth with state, encrypted tokens, refresh, account verification
-- [~] Container → status → publish → verify; publishing limit; carousels; retries; idempotency; reconnect flow
-- [!] Real-account verification: needs Meta app, professional IG account, tester role, public HTTPS `BASE_URL`
+## Phase C — Poojaloka experience
+- [x] Catalogue connector (storefront API) + dated snapshot with provenance, freshness, data-quality flags
+- [~] Live sync/refresh from the app (mocked API in tests; snapshot fetched for real)
+- [x] Editable marketing profile (pillars, languages, objectives, platform preferences, posting constraints, budget)
+- [x] Pillow poster renderer (brand fonts/colours, real photos only, typographic cards, checks, PNG/JPEG)
+- [~] Optional Gemini AI backgrounds (mocked)
+- [x] Platform variants, regenerate one variant, re-render with variations
+- [x] UI: live timeline, platform previews, gallery, calendar drag & drop, inspiration gallery, side by side,
+      asset library, version compare, usage dashboard, seven-platform integrations page
 
-## Phase 4 — Analytics & adaptive strategy
-- [x] Metric collection (synthetic in demo), definitions, freshness, missing data kept missing
-- [~] Instagram insights (mocked)
-- [x] Experiment evaluation (sample size, permutation test, association language)
-- [x] Strategy revision → recommendations + next experiment; campaign reports (view/download)
+## Phase D — APIs
+- [~] Gemini (Interactions API) planner + generator; connection test
+- [~] Brave Search (parallel, cached, capped); connection test
+- [!] Real keys: GEMINI_API_KEY, BRAVE_SEARCH_API_KEY
 
-## Phase 5 — Polish & delivery
-- [x] Docs: README, ARCHITECTURE, API_INTEGRATIONS, SECURITY, DEMO_SCRIPT, KNOWN_LIMITATIONS, PITCH
-- [x] Browser e2e test (Playwright), lint/type checks, production build, dependency audit
-- [~] Docker Compose / Dockerfiles (written, not built: no Docker)
-- [x] CI workflow runs on GitHub Actions (backend + frontend jobs)
-- [ ] Evaluation harness vs one-shot LLM baseline (needs LLM key)
-- [ ] Pinterest adapter, image generation provider, reels/video publishing
-- [ ] Facebook Login variant for competitor Business Discovery
+## Phase E — Distribution and learning
+- [~] Instagram + Facebook Pages live adapters (mocked)
+- [!] Meta app, professional IG account, Facebook Page, tester role / App Review, public HTTPS BASE_URL
+- [x] Simulated adapters for all seven platforms; specs with limits/auth/eligibility
+- [x] Per-platform status, partial failures, approval hash + DB constraint
+- [x] Baselines, platform-scoped A/B, confidence, approvable recommendations
+- [ ] Live adapters for Pinterest, X, LinkedIn, YouTube, Threads
+- [ ] Video / reels; Kannada on-image text (needs libraqm); paid promotion APIs
 
-## Needs you
-- [!] `LLM_API_KEY` (Anthropic) to run the live agent
-- [!] `SEARCH_API_KEY` (Brave) for live research
-- [!] Meta app + professional Instagram account + public HTTPS URL for real publishing
+## Phase F — Verify and document
+- [x] 96 backend tests, ruff, ESLint, tsc, next build, browser e2e (Poojaloka flow)
+- [x] README, ARCHITECTURE, API_INTEGRATIONS, DEPLOYMENT, SECURITY, DEMO_SCRIPT, KNOWN_LIMITATIONS
+- [~] Docker Compose / PostgreSQL (written, not run here)
+- [ ] Evaluation harness vs a one-shot LLM baseline (needs an LLM key)

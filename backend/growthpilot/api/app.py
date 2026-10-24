@@ -76,7 +76,18 @@ def create_app(settings: Settings | None = None, *, start_worker: bool | None = 
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "mode": settings.app_mode.value}
+        from sqlalchemy import text
+
+        from ..db import session_factory
+
+        try:
+            with session_factory()() as db:
+                db.execute(text("SELECT 1"))
+            database = "ok"
+        except Exception:  # noqa: BLE001
+            database = "error"
+        return JSONResponse({"status": "ok" if database == "ok" else "degraded", "mode": settings.app_mode.value,
+                             "database": database}, status_code=200 if database == "ok" else 503)
 
     from .routes import (
         agent,
