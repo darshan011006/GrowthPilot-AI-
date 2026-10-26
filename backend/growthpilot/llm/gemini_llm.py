@@ -42,15 +42,20 @@ def inline_schema(schema: dict) -> dict:
     """Resolve local ``$ref``s from Pydantic's ``$defs`` and drop titles (keeps schemas simple for Gemini)."""
     defs = schema.get("$defs", {})
 
-    def walk(node: Any, depth: int = 0) -> Any:
+    def walk(node: Any, depth: int = 0, field_names: bool = False) -> Any:
+        # field_names: node maps field names to schemas (the value of "properties"), so a field called
+        # "title" is data and must be kept; elsewhere "title" is schema metadata and is dropped.
         if depth > 20:
             return {}
         if isinstance(node, dict):
+            if field_names:
+                return {k: walk(v, depth + 1) for k, v in node.items()}
             if "$ref" in node and node["$ref"].startswith("#/$defs/"):
                 target = copy.deepcopy(defs.get(node["$ref"].split("/")[-1], {}))
                 extra = {k: v for k, v in node.items() if k != "$ref"}
                 return walk({**target, **extra}, depth + 1)
-            return {k: walk(v, depth + 1) for k, v in node.items() if k not in ("$defs", "title")}
+            return {k: walk(v, depth + 1, field_names=k in ("properties", "patternProperties"))
+                    for k, v in node.items() if k not in ("$defs", "title")}
         if isinstance(node, list):
             return [walk(x, depth + 1) for x in node]
         return node
@@ -92,7 +97,12 @@ class GeminiLLM:
         if resp.status_code == 404:
             raise LLMError(f"Gemini model {self.model!r} was not found. Check GEMINI_MODEL.")
         if resp.status_code == 429:
-            raise LLMError("Gemini rate limit or quota reached.", retryable=True)
+            msg, delay = self._quota_details(resp)
+            if delay > 300 or "per day" in msg.lower():
+                # A daily quota (e.g. the free tier's requests-per-day) won't reset within a run's retries.
+                raise LLMError(f"Gemini's daily request limit is used up. {msg} Enable billing on the Google "
+                               "project for higher limits, or try again later.".replace("  ", " "))
+            raise LLMError("Gemini rate limit or quota reached." + (f" {msg}" if msg else ""), retryable=True)
         if resp.status_code >= 500:
             raise LLMError(f"Gemini API error (HTTP {resp.status_code}).", retryable=True)
         if resp.status_code >= 400:
@@ -109,6 +119,22 @@ class GeminiLLM:
         if status == "incomplete":
             raise LLMError("The Gemini response was cut off (output limit). Try a smaller request.")
         return data
+
+    def _quota_details(self, resp: httpx.Response) -> tuple[str, float]:
+        """Google's own explanation of a 429 (key removed) and its suggested retry delay in seconds."""
+        try:
+            err = resp.json().get("error", {}) or {}
+        except ValueError:
+            return "", 0.0
+        msg = redact(str(err.get("message", ""))).replace(self._key, "[redacted]")[:300] if self._key else ""
+        delay = 0.0
+        for d in err.get("details") or []:
+            if str(d.get("@type", "")).endswith("RetryInfo"):
+                try:
+                    delay = float(str(d.get("retryDelay", "0")).rstrip("s") or 0)
+                except ValueError:
+                    pass
+        return msg, delay
 
     def _account(self, data: dict, operation: str) -> int:
         u = data.get("usage") or {}

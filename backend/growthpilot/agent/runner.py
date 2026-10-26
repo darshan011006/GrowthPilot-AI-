@@ -40,6 +40,8 @@ from .registry import ROLE_LABELS, Role, ToolBlocked, ToolContext, ToolError, To
 log = logging.getLogger(__name__)
 
 MAX_RETRIES = 2
+PLANNER_RETRY_WAITS = (10, 20, 40, 60)  # seconds; long enough for per-minute rate limits to reset
+PLANNER_RETRIES = len(PLANNER_RETRY_WAITS)
 MAX_RECOVERIES = 2
 _sleep = time.sleep
 FINISHED = (RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.BLOCKED)
@@ -269,6 +271,7 @@ class Runner:
         else:
             r.status = RunStatus.RUNNING
             self.db.commit()
+        planner_retries = 0
         while True:
             stop = self._limits()
             if stop == "paused":
@@ -294,10 +297,21 @@ class Runner:
                 self._await_budget(str(exc))
                 return
             except LLMError as exc:
+                if exc.retryable and planner_retries < PLANNER_RETRIES:
+                    # Rate limits, overloaded models and network blips usually clear within a minute.
+                    self.db.rollback()
+                    planner_retries += 1
+                    wait = PLANNER_RETRY_WAITS[planner_retries - 1]
+                    self.step("decision", f"The planner model is unavailable right now ({exc}). Waiting {wait}s, then "
+                              f"retrying (retry {planner_retries} of {PLANNER_RETRIES}). Completed work is kept.",
+                              status="error")
+                    _sleep(wait)
+                    continue
                 self._finish(RunStatus.FAILED, "llm_error", f"The planner model failed: {exc}")
                 return
             finally:
                 usage.close_scope(token)
+            planner_retries = 0
             if isinstance(res, tuple):  # LLM planner made a model call
                 _action, events, tokens = res
                 cost = scope.cost_usd

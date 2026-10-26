@@ -92,6 +92,20 @@ def test_webhook_signature_and_guards(monkeypatch, tmp_path):
         WebhookAdapter().verify_connection(ctx)
 
 
+def test_safe_get_reads_compressed_responses(monkeypatch, tmp_path):
+    """Real servers (e.g. the Poojaloka store API) gzip their JSON; safe_get must decode it exactly once."""
+    import gzip
+
+    _configure(monkeypatch, tmp_path, "live")
+    net.set_resolver(lambda host, port, proto=0: [(2, 1, 6, "", ("93.184.216.34", 443))])
+    payload = json.dumps({"products": [{"name": "Matki Diya"}]}).encode()
+    net.set_transport(httpx.MockTransport(lambda r: httpx.Response(
+        200, headers={"content-encoding": "gzip", "content-type": "application/json"}, content=gzip.compress(payload))))
+    resp = net.safe_get("https://api.example.com/products", allowed_domains=["api.example.com"])
+    assert resp.json() == {"products": [{"name": "Matki Diya"}]}
+    assert "content-encoding" not in resp.headers
+
+
 def test_migrations_from_clean_state(monkeypatch, tmp_path):
     from alembic import command
 

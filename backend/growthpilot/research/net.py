@@ -104,6 +104,10 @@ def safe_get(url: str, *, max_bytes: int = 1_000_000, allowed_domains: list[str]
                         break
                     chunks.append(chunk)
                 body = b"".join(chunks)
-                return httpx.Response(resp.status_code, headers=resp.headers, content=body,
+                # iter_bytes() already decompressed the body, so drop the headers that describe the
+                # compressed form; otherwise httpx tries to decompress it again (DecodingError on gzip).
+                hdrs = [(k, v) for k, v in resp.headers.multi_items()
+                        if k.lower() not in ("content-encoding", "content-length", "transfer-encoding")]
+                return httpx.Response(resp.status_code, headers=hdrs, content=body,
                                       request=httpx.Request("GET", current))
     raise BlockedURL("Too many redirects.")

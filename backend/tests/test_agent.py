@@ -8,11 +8,12 @@ import pytest
 from sqlalchemy import select
 
 from growthpilot.agent import registry
+from growthpilot.agent import runner as runner_mod
 from growthpilot.agent.intent import parse_goal
 from growthpilot.agent.planner_demo import Action
 from growthpilot.agent.runner import Runner, create_run, execute_run
 from growthpilot.db import session_scope
-from growthpilot.llm import set_llm_override
+from growthpilot.llm import LLMError, set_llm_override
 from growthpilot.models import AgentRun, ContentItem, ResearchFinding, Workspace
 from growthpilot.research import net
 
@@ -235,6 +236,42 @@ def test_llm_planner_loop_and_publish_refusal(monkeypatch, tmp_path):
     results = fake.seen[1][-1]["content"]
     assert {b["tool_use_id"] for b in results} == {"t1", "t2"}
     assert any(b.get("is_error") for b in results)
+
+
+class FlakyLLM(FakeLLM):
+    """Rate-limited on the first calls, like a free-tier Gemini key under load."""
+
+    def __init__(self, script, failures):
+        super().__init__(script)
+        self.failures = failures
+
+    def tool_turn(self, system, messages, tools):
+        if self.failures:
+            self.failures -= 1
+            raise LLMError("Gemini rate limit or quota reached.", retryable=True)
+        return super().tool_turn(system, messages, tools)
+
+
+def test_planner_waits_and_retries_on_rate_limits(monkeypatch, tmp_path):
+    api = _live(monkeypatch, tmp_path)
+    waits = []
+    monkeypatch.setattr(runner_mod, "_sleep", waits.append)
+    set_llm_override(FlakyLLM([
+        Resp([Block("tool_use", id="t1", name="inspect_brand")], "tool_use"),
+        Resp([Block("text", "Done.")], "end_turn"),
+    ], failures=2))
+    rid = _run_obj(api, "Load the brand")
+    with session_scope() as db:
+        run = execute_run(db, db.get(AgentRun, rid))
+        assert run.status == "completed", (run.completion_reason, run.outcome_summary)
+        assert waits == list(runner_mod.PLANNER_RETRY_WAITS[:2])
+        assert sum("Waiting" in s.message for s in run.steps) == 2
+    # A model that never recovers still fails cleanly after the last retry.
+    set_llm_override(FlakyLLM([], failures=99))
+    rid = _run_obj(api, "Load the brand again")
+    with session_scope() as db:
+        run = execute_run(db, db.get(AgentRun, rid))
+        assert run.status == "failed" and run.completion_reason == "llm_error"
 
 
 def test_live_run_without_llm_key_is_blocked_with_message(monkeypatch, tmp_path):

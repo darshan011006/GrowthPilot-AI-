@@ -112,6 +112,26 @@ def test_gemini_errors_are_mapped_and_never_echo_the_key(monkeypatch, tmp_path, 
     assert exc.value.retryable is retryable and text in str(exc.value) and KEY not in str(exc.value)
 
 
+def test_gemini_daily_quota_is_not_retried(monkeypatch, tmp_path):
+    """The free tier's requests-per-day limit won't clear within a run, so the agent should stop and say why."""
+    _live(monkeypatch, tmp_path)
+    body = {"error": {"code": 429, "message": "Rate limit exceeded for model gemini-3.6-flash (limit: 20 requests per "
+                      "day on Free Tier). Please retry in 22h20m19s.",
+                      "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "80419s"}]}}
+    net.set_transport(httpx.MockTransport(lambda req: httpx.Response(429, json=body)))
+    with pytest.raises(LLMError) as exc:
+        GeminiLLM(KEY, "gemini-3.6-flash").structured("s", "p", Out)
+    assert exc.value.retryable is False
+    assert "daily request limit" in str(exc.value) and "20 requests per day" in str(exc.value)
+    # A short per-minute limit is still retryable.
+    short = {"error": {"message": "Too many requests per minute.",
+                       "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "12s"}]}}
+    net.set_transport(httpx.MockTransport(lambda req: httpx.Response(429, json=short)))
+    with pytest.raises(LLMError) as exc:
+        GeminiLLM(KEY, "gemini-3.6-flash").structured("s", "p", Out)
+    assert exc.value.retryable is True and "per minute" in str(exc.value)
+
+
 def test_gemini_connection_test(monkeypatch, tmp_path):
     _live(monkeypatch, tmp_path)
     net.set_transport(httpx.MockTransport(lambda req: httpx.Response(200, json={"displayName": "Gemini 3.8 Flash"})
@@ -131,6 +151,40 @@ def test_inline_schema_resolves_refs():
 
     s = inline_schema(Outer.model_json_schema())
     assert "$ref" not in json.dumps(s) and s["properties"]["items"]["items"]["properties"]["a"]["type"] == "integer"
+
+
+def test_inline_schema_keeps_fields_named_title():
+    """Gemini rejects a schema whose 'required' names a field missing from 'properties'."""
+    from pydantic import BaseModel as _BM
+
+    from growthpilot.agent import generation  # SlotContentOut failed live with exactly this error
+
+    class Slide(BaseModel):
+        title: str
+        body: str
+
+    class Brief(BaseModel):
+        title: str
+        slides: list[Slide]
+
+    app_schemas = [v for v in vars(generation).values() if isinstance(v, type) and issubclass(v, _BM) and v is not _BM]
+    assert generation.SlotContentOut in app_schemas
+    for model in (Brief, *app_schemas):
+        s = inline_schema(model.model_json_schema())
+
+        def check(node):
+            if isinstance(node, dict):
+                assert set(node.get("required", [])) <= set(node.get("properties", {})), node
+                for v in node.values():
+                    check(v)
+            elif isinstance(node, list):
+                for v in node:
+                    check(v)
+
+        check(s)
+    s = inline_schema(Brief.model_json_schema())
+    assert "title" in s["properties"] and "title" in s["properties"]["slides"]["items"]["properties"]
+    assert "title" not in s["properties"]["title"]  # schema metadata titles are still dropped
 
 
 def test_brave_cache_caps_and_parallel_search(monkeypatch, tmp_path):

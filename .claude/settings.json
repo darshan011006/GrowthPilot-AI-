@@ -1,0 +1,5 @@
+{
+  "skillOverrides": {
+    "claude-api": "user-invocable-only"
+  }
+}

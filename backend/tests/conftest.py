@@ -35,6 +35,9 @@ def _configure(monkeypatch, tmp_path, mode: str, **extra):
 
 @pytest.fixture(autouse=True)
 def _isolation(monkeypatch):
+    # Never read the developer's .env: tests must not see real API keys or settings.
+    monkeypatch.setitem(config.Settings.model_config, "env_file", None)
+    config.get_settings.cache_clear()
     monkeypatch.setattr(runner_mod, "_sleep", lambda _s: None)
     monkeypatch.setattr(ig_mod, "_sleep", lambda _s: None)
     yield
