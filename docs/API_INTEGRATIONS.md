@@ -7,42 +7,18 @@ docs and tested against a mocked API, not yet run with real credentials. **Simul
 |---|---|---|---|---|
 | Google Gemini (LLM) | live | Implemented | `GEMINI_API_KEY` | per token (free tier on some models) |
 | Anthropic Claude (LLM, optional) | live | Implemented | `LLM_API_KEY` | per token |
-| Groq (LLM) | — | Not implemented; no adapter or connection check exists | — | — |
 | Brave Search | live | Implemented | `BRAVE_SEARCH_API_KEY` | $5 / 1,000 requests after a monthly credit |
 | Poojaloka storefront API (catalogue) | live (demo: snapshot) | Implemented; snapshot fetched for real on 2026-10-24 | nothing | free |
 | Public page fetch (`inspect_website`) | live | Implemented, mocked pages | permitted domains in Brand Brain | free |
 | Gemini image (AI backgrounds) | live, optional | Implemented | `IMAGE_GENERATION_PROVIDER=gemini` | ≈ $0.03 per image |
 | Instagram (Instagram Login) | live | Implemented, mocked Meta API | Meta app, professional account, public HTTPS | free API |
 | Facebook Pages | live | Implemented, mocked Graph API | same Meta app + Facebook Login for Business, a Page | free API |
-| Canva | — | Not integrated; no Canva API calls are made | — | — |
 | Pinterest, X, LinkedIn, YouTube, Threads | demo | Specs + simulated adapters only | see table below | — |
 | Signed webhook (Zapier / Make / n8n) | live | Implemented, mock receiver | a webhook URL | — |
 
 Owners can check keys from **Integrations → Test connection**; each test is one small request and results never
 show the key. Prices are from the providers' pages on 2026-10-24 and are used only for estimates
 (**Usage & Budgets** shows the table); your provider's bill is authoritative.
-
-### Checks completed for this repository review (2026-10-31)
-
-The checked-in implementation and environment template were inspected without reading or displaying local secret
-values. No live provider connection checks were run in this review, so no account or credential is marked verified.
-Groq and Canva are unavailable in the current application. Canva mentions in the creative brief schema describe a
-design brief/export target only; they do not invoke Canva or establish a Canva integration. The available LLM
-adapters are Gemini and Anthropic. Their connection checks are owner-only, live-mode requests and may consume
-provider quota; run them explicitly from Integrations when that cost is acceptable.
-
-Current official docs were checked on 2026-10-31: Meta's [Instagram API collection](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api)
-describes professional (Business or Creator) accounts and publishing endpoints; Meta's [Facebook API collection](https://www.postman.com/meta/facebook/documentation/r56bjfd/facebook-api)
-documents Page access tokens. The code uses separate Instagram Login and Facebook Login flows, and the Facebook
-adapter only accepts Pages where the returned tasks include `CREATE_CONTENT`. Meta still controls the app roles,
-access level, permissions and review needed for a particular account; this repository has not verified those for
-your app. The `.env` App ID/Secret presence alone does not connect an account.
-
-Groq's [OpenAI-compatible API](https://console.groq.com/docs/openai) supports chat completions and tool calling, but
-the current code has no Groq adapter, structured-output compatibility layer, quota handling, or tested model mapping.
-It is therefore not selected even if a Groq key is present. Canva's [Connect API](https://www.canva.dev/docs/connect/)
-can create/edit/export designs with OAuth and scopes, but this project has no Canva OAuth or API client. The local
-poster renderer remains the implemented poster path; the agent's Canva query is a design brief, not a Canva action.
 
 ---
 

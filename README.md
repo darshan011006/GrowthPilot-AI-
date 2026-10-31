@@ -64,27 +64,26 @@ Migrations run automatically on API start. Demo reset (choose Poojaloka or Arany
 
 Hosting: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-## Feature status (repository review: 2026-10-31)
+## Feature status (2026-10-24)
 
 | Status | Features |
 |---|---|
 | **Implemented and tested** (demo + automated tests) | Orchestrator with six specialist roles and 26 typed, role- and effect-tagged tools; persistent runs with pause/resume/retry/cancel, crash recovery and budget-approval pauses; Poojaloka catalogue snapshot with provenance, freshness and data-quality flags; Pillow poster renderer (PNG/JPEG, platform sizes, contrast/safe-area/text-fit/glyph checks); claim, brand and platform verification with revision loop; per-platform variants with independent approval, scheduling and publication; approval bound to a hash of text + image bytes and a DB check constraint; duplicate prevention, idempotent publishing, partial-failure tracking; usage tracking, budgets, search cache and caps; platform-scoped A/B evaluation with baseline and confidence; recommendations with owner-approved changes; reports; all UI pages |
 | **Implemented, awaiting credentials** (tested with mocked APIs) | Gemini planner and generator (Interactions API, thought-signature replay); Claude planner/generator; Brave Search (single + parallel); live Poojaloka catalogue sync and refresh; Gemini image backgrounds |
-| **Not connected / unavailable in this build** | Groq has no provider adapter or connection check. Canva has no API integration; the brief's Canva query is an exportable design brief only. No credentials are fabricated or required for either. |
 | **Awaiting platform permissions or review** | Instagram (Instagram Login) and Facebook Pages live adapters — built and mock-tested; need a Meta app, professional accounts, tester role or App Review, public HTTPS URL |
 | **Simulated / demo-only** | Publishing and metrics on all seven platforms in demo mode; competitor references (fictional); trend fixture notes |
 | **Not implemented** | Live adapters for Pinterest, X, LinkedIn, YouTube and Threads (specs + simulated adapters only); video/reels; Kannada text on images (captions can be Kannada); paid ad campaigns; evaluation harness vs a one-shot LLM baseline |
 
 Details: [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md).
 
-## Verification
+## Verification (last run 2026-10-24)
 
-- Backend: 96 pytest tests passed in the baseline run on 2026-10-24 — orchestration and state transitions, tool schemas, resumption and crash recovery,
+- Backend: 96 pytest tests pass — orchestration and state transitions, tool schemas, resumption and crash recovery,
   budget gates, research provenance, prompt-injection flags, product-fact verification, creative rendering and
   image sizes, versioning and approval invalidation (including image tampering), platform variants, duplicate
   prevention, partial publish failures, Gemini/Brave/Facebook/Instagram against mocked APIs (timeouts, auth
   errors, rate limits), catalogue ingestion, demo/live separation, secret handling, experiments. Ruff clean.
-- Frontend: ESLint and `tsc` were clean and `next build` succeeded in the baseline run on 2026-10-24.
+- Frontend: ESLint and `tsc` clean; `next build` succeeds.
 - Browser: `make e2e` passes in Chromium with no console errors (reset → Poojaloka catalogue → multi-platform run →
   approve 28 platform versions → automatic scheduling → simulated publish + verification → asset library →
   analytics → evaluation → apply a recommendation → report → usage → mobile).

@@ -71,12 +71,12 @@ export default function CalendarPage() {
     <div>
       <PageHeader title="Content Calendar" subtitle={`Every platform's posts in ${data?.timezone || can.tz}. Drag a draft or approved post to another day to re-plan it (approval is kept: only the time changes). Publishing runs from the backend worker.`} />
       {move.error && <div className="mb-3"><Alert tone="bad">{move.error}</Alert></div>}
-      <Card className="mb-5 rounded-3xl">
+      <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={() => setAnchor(addDays(anchor, view === "week" ? -7 : -1))} aria-label="Previous">‹</Button>
+          <Button size="sm" onClick={() => setAnchor(addDays(anchor, view === "week" ? -7 : -1))} aria-label="Previous">←</Button>
           <Button size="sm" onClick={() => setAnchor(today)}>Today</Button>
-          <Button size="sm" onClick={() => setAnchor(addDays(anchor, view === "week" ? 7 : 1))} aria-label="Next">›</Button>
-          <span className="mx-2 min-w-40 text-sm font-semibold">{view === "week" ? `Week of ${label(days[0])}` : label(anchor)}</span>
+          <Button size="sm" onClick={() => setAnchor(addDays(anchor, view === "week" ? 7 : 1))} aria-label="Next">→</Button>
+          <span className="mx-2 text-sm font-semibold">{view === "week" ? `${label(days[0])} – ${label(days[6])}` : label(anchor)}</span>
           <div className="grid w-full grid-cols-2 gap-2 md:w-auto md:flex-1 md:grid-cols-5">
             <Select aria-label="View" value={view} onChange={(e) => setView(e.target.value as "week" | "day")}><option value="week">Week</option><option value="day">Day</option></Select>
             <Select aria-label="Campaign" value={campaign} onChange={(e) => setCampaign(e.target.value)}><option value="">All campaigns</option>{camps.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
@@ -93,14 +93,14 @@ export default function CalendarPage() {
         <div className={cx("grid gap-2", view === "week" ? "grid-cols-1 md:grid-cols-7" : "grid-cols-1")}>
           {days.map((d) => (
             <div key={d} onDragOver={(e) => { if (can.edit) { e.preventDefault(); setDragOver(d); } }} onDragLeave={() => setDragOver(null)} onDrop={(e) => onDrop(d, e)}
-              className={cx("min-h-72 rounded-2xl border bg-[#0b120e] p-3 transition md:min-h-[370px]", d === today ? "border-accent" : "border-line", dragOver === d && "ring-2 ring-accent")}>
-              <div className={cx("mb-3 border-b border-line pb-2 text-sm font-semibold", d === today ? "text-accent" : "text-muted")}>{label(d)}{d === today && <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[9px] text-accent-ink">TODAY</span>}</div>
-              <div className="space-y-2">
+              className={cx("min-h-40 rounded-xl border bg-panel p-2 transition", d === today ? "border-accent" : "border-line", dragOver === d && "ring-2 ring-accent")}>
+              <div className={cx("mb-2 text-xs font-semibold", d === today ? "text-accent" : "text-muted")}>{label(d)}</div>
+              <div className="space-y-1.5">
                 {(byDay[d] || []).map(({ time, item }) => (
                   <Link key={item.id} href={`/content/${item.id}`} draggable={can.edit && MOVABLE.includes(item.status)}
                     onDragStart={(e) => e.dataTransfer.setData("text/plain", `${item.id}|${time}`)}
                     title={MOVABLE.includes(item.status) ? "Drag to another day to re-plan" : item.status === "scheduled" ? "Unschedule it to move" : undefined}
-                    className={cx("block rounded-xl border px-2.5 py-2.5 text-xs hover:shadow-sm", STATUS_BG[item.status], can.edit && MOVABLE.includes(item.status) && "cursor-grab")}>
+                    className={cx("block rounded-lg border px-2 py-1.5 text-xs hover:shadow-sm", STATUS_BG[item.status], can.edit && MOVABLE.includes(item.status) && "cursor-grab")}>
                     <div className="flex items-center justify-between gap-1"><span className="flex items-center gap-1 font-semibold"><PlatformChip platform={item.platform} />{time}</span><span className="text-[10px] uppercase text-muted">{item.content_type}</span></div>
                     <div className="line-clamp-2 font-medium text-ink">{item.title || item.caption.slice(0, 40)}</div>
                     {view === "day" && <div className="mt-1"><ContentStatusBadge status={item.status} /> {item.connection_name && <span className="text-muted">· {item.connection_name}</span>}</div>}

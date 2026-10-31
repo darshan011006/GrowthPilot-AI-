@@ -22,18 +22,18 @@ export default function CampaignsPage() {
   };
   return (
     <div>
-      <PageHeader title="Campaigns" subtitle="Track multi-platform campaign progress, content and dates."
-        actions={can.edit && <><Link href="/agent" className="rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-ink">Plan with the agent</Link><Button onClick={() => setOpen(true)}>+ New campaign</Button></>} />
+      <PageHeader title="Campaigns" subtitle="Campaigns the agent planned (with hypotheses and experiments) or that you created by hand."
+        actions={can.edit && <><Link href="/agent" className="rounded-lg bg-accent px-3.5 py-2 text-sm font-semibold text-accent-ink">Plan with the agent</Link><Button onClick={() => setOpen(true)}>New manual campaign</Button></>} />
       {loading && !data ? <Loading /> : error ? <Alert tone="bad">{error}</Alert> : !data?.length ? <Empty title="No campaigns yet" /> : (
-        <div className="grid gap-5 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           {data.map((c) => {
             const counts = c.counts || {};
             const total = Object.values(counts).reduce((a, b) => a + b, 0);
             return (
-              <Link key={c.id} href={`/campaigns/${c.id}`} className="block rounded-3xl border border-line bg-panel p-6 transition hover:border-accent/50">
-                <div className="flex flex-wrap items-center gap-2"><span className="text-lg font-semibold">{c.name}</span><Badge tone={c.status === "completed" ? "neutral" : "accent"}>{c.status}</Badge><SyntheticBadge show={c.is_synthetic} /></div>
-                <p className="mt-2 min-h-12 line-clamp-2 text-sm leading-6 text-muted">{c.objective}</p>
-                <div className="mt-4 flex flex-wrap gap-1.5 text-xs text-muted">
+              <Link key={c.id} href={`/campaigns/${c.id}`} className="block rounded-xl border border-line bg-panel p-4 hover:border-accent">
+                <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{c.name}</span><Badge tone={c.status === "completed" ? "neutral" : "accent"}>{c.status}</Badge><SyntheticBadge show={c.is_synthetic} /></div>
+                <p className="mt-1 line-clamp-2 text-sm text-muted">{c.objective}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-muted">
                   <span>{c.start_date || "—"} → {c.end_date || "—"}</span><span>·</span><span>{total} item(s)</span>
                   {counts.in_review ? <Badge tone="warn">{counts.in_review} in review</Badge> : null}
                   {counts.published ? <Badge tone="ok">{counts.published} published</Badge> : null}

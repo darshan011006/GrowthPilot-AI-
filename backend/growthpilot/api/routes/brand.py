@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -19,8 +18,6 @@ from ...models import Asset, Brand, Persona, Product
 from ...platforms import ORDER
 from ...services import assets as asset_service
 from ...services.errors import WorkflowError
-from ...research.net import host_of
-from ...research.web import FetchError, fetch_page
 from .. import serializers as S
 from ..deps import ApiError, Ctx, get_ctx, rate_limit
 
@@ -61,7 +58,6 @@ class BrandIn(BaseModel):
     posting_constraints: dict = Field(default_factory=dict)
     campaign_budget_usd: float | None = Field(default=None, ge=0, le=1000)
     fonts: list[str] = Field(default_factory=list, max_length=8)
-    profile_sources: list[dict] = Field(default_factory=list, max_length=100)
 
 
 def _clean_list(xs: list[str], limit: int = 300) -> list[str]:
@@ -77,68 +73,6 @@ def get_brand(ctx: Ctx = Depends(get_ctx)):
     products = ctx.db.execute(select(Product).where(Product.brand_id == b.id).order_by(Product.id)).scalars().all()
     return {"brand": S.brand(b), "personas": [S.persona(p) for p in personas],
             "products": [S.product(p) for p in products]}
-
-
-class SiteScanIn(BaseModel):
-    website: str = Field(min_length=8, max_length=255)
-
-
-@router.post("/onboarding/scan-website")
-def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
-    """Inspect a small set of public pages on the submitted domain and return a reviewable draft."""
-    ctx.require_editor()
-    rate_limit(f"site-scan:{ctx.workspace.id}", 5, 3600)
-    url = body.website.strip()
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
-    host = host_of(url)
-    if not host:
-        raise ApiError(400, "Enter a valid public website URL.", "validation")
-    # Only fetch same-host pages, and keep the crawl deliberately small.
-    candidates = [url]
-    pages = []
-    errors = []
-    seen: set[str] = set()
-    while candidates and len(pages) < 6:
-        page_url = candidates.pop(0).split("#", 1)[0]
-        if page_url in seen:
-            continue
-        seen.add(page_url)
-        try:
-            page = fetch_page(page_url, allowed_domains=[host])
-        except FetchError as exc:
-            errors.append(str(exc)[:220])
-            continue
-        pages.append(page)
-        for link in page.links:
-            low = link.lower()
-            if host_of(link) == host and any(word in low for word in ("about", "product", "service", "contact", "faq", "collection")):
-                if link not in seen and link not in candidates:
-                    candidates.append(link)
-    if not pages:
-        raise ApiError(422, errors[0] if errors else "No readable public pages were found.", "scan_failed")
-    home = pages[0]
-    title = home.title.split(" | ")[0].split(" — ")[0].split(" - ")[0].strip()
-    name = title[:120] or host.removeprefix("www.").split(".")[0].replace("-", " ").title()
-    description = home.description or next((p.description for p in pages if p.description), "")
-    text_chunks = [p.text for p in pages]
-    headings = list(dict.fromkeys(h for p in pages for h in p.headings))[:20]
-    retrieved = datetime.now(UTC).isoformat()
-    sources = []
-    for page in pages:
-        if page.title:
-            sources.append({"field": "name", "source_url": page.url, "retrieved_at": retrieved,
-                            "note": f"Page title: {page.title}"})
-        if page.description:
-            sources.append({"field": "description", "source_url": page.url, "retrieved_at": retrieved,
-                            "note": page.description[:300]})
-    return {"draft": {"name": name, "website": url, "description": description,
-                       "positioning": "\n".join(headings[:8]),
-                       "content_pillars": headings[:8], "profile_sources": sources,
-                       "pages_scanned": [{"url": p.url, "title": p.title} for p in pages],
-                       "text_preview": "\n".join(text_chunks)[:1600],
-                       "needs_user_confirmation": ["audience", "voice", "goals", "claims", "social accounts"]},
-            "warnings": errors[:4]}
 
 
 @router.put("/brand")

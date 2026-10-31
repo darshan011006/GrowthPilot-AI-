@@ -64,7 +64,7 @@ export function Button({ variant = "secondary", size = "md", className, busy, ch
       {...rest}
       disabled={rest.disabled || busy}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-xl border font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center gap-1.5 rounded-lg border font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
         size === "sm" ? "px-2.5 py-1 text-xs" : "px-3.5 py-2 text-sm",
         variants[variant],
         className,
@@ -86,7 +86,7 @@ export function LinkButton({ href, variant = "secondary", size = "md", children,
 
 export function Card({ children, className, title, actions, subtitle }: { children?: ReactNode; className?: string; title?: ReactNode; actions?: ReactNode; subtitle?: ReactNode }) {
   return (
-    <section className={cx("rounded-2xl border border-line bg-panel p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] md:p-6", className)}>
+    <section className={cx("rounded-xl border border-line bg-panel p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]", className)}>
       {(title || actions) && (
         <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
           <div>
@@ -121,15 +121,6 @@ export function Badge({ tone = "neutral", children, title, className }: { tone?:
   );
 }
 
-export function ChangeBadge({ percent, isNew, period = "vs previous 30-day period" }: { percent: number | null; isNew?: boolean; period?: string }) {
-  if (isNew) return <span title={period} className="inline-flex items-center rounded-full bg-accent-soft px-2 py-1 text-xs font-semibold text-accent">New</span>;
-  if (percent === null || !Number.isFinite(percent)) return <span className="text-xs font-normal text-muted">No prior period data</span>;
-  const positive = percent >= 0;
-  return <span title={period} className={cx("inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold", positive ? "bg-ok-soft text-ok" : "bg-bad-soft text-bad")}>
-    <span aria-hidden>{positive ? "↗" : "↘"}</span>{positive ? "+" : ""}{percent.toFixed(1)}% <span className="font-normal opacity-80">{period}</span>
-  </span>;
-}
-
 export function Field({ label, hint, children, error }: { label: string; hint?: string; children: (id: string) => ReactNode; error?: string }) {
   const id = useId();
   return (
@@ -143,7 +134,7 @@ export function Field({ label, hint, children, error }: { label: string; hint?: 
   );
 }
 
-const inputCls = "w-full rounded-xl border border-line bg-panel-2 px-3.5 py-3 text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none";
+const inputCls = "w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none";
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={cx(inputCls, props.className)} />;
@@ -196,7 +187,7 @@ export function Empty({ title, children, action }: { title: string; children?: R
 
 export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: Tone }) {
   return (
-    <div className="rounded-2xl border border-line bg-panel p-5 md:p-6">
+    <div className="rounded-xl border border-line bg-panel p-4">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</div>
       <div className={cx("mt-1 text-2xl font-bold", tone === "warn" ? "text-warn" : tone === "bad" ? "text-bad" : "text-ink")}>{value}</div>
       {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
@@ -208,8 +199,8 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="sr-only text-2xl font-bold tracking-tight text-ink">{title}</h1>
-        {subtitle && <p className="max-w-3xl text-sm text-muted">{subtitle}</p>}
+        <h1 className="text-2xl font-bold tracking-tight text-ink">{title}</h1>
+        {subtitle && <p className="mt-1 max-w-3xl text-sm text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
