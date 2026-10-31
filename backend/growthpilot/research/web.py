@@ -30,6 +30,7 @@ class PageSnapshot:
     description: str
     text: str
     site_name: str = ""
+    product_meta: dict = field(default_factory=dict)
     headings: list[str] = field(default_factory=list)
     links: list[str] = field(default_factory=list)
     products: list[dict] = field(default_factory=list)
@@ -46,6 +47,7 @@ class _Extractor(HTMLParser):
         self.title = ""
         self.description = ""
         self.site_name = ""
+        self.product_meta: dict[str, str] = {}
         self.headings: list[str] = []
         self.links: list[str] = []
         self.images: list[str] = []
@@ -74,16 +76,40 @@ class _Extractor(HTMLParser):
             self.description = self.description or (a.get("content") or "")[:500]
         if tag == "meta" and (a.get("property", "").lower() == "og:site_name" or a.get("name", "").lower() == "application-name"):
             self.site_name = self.site_name or (a.get("content") or "").strip()[:120]
+        if tag == "meta" and a.get("content"):
+            key = (a.get("property") or a.get("name") or a.get("itemprop") or "").strip().lower()
+            content = a["content"].strip()
+            if key in {"og:title", "og:type", "og:description", "product:price:amount", "product:price:currency",
+                       "product:availability", "product:retailer_item_id", "product:brand", "price", "pricecurrency",
+                       "availability", "sku"}:
+                self.product_meta.setdefault(key, content[:500])
         if tag == "meta" and a.get("name", "").lower() == "theme-color":
             self.theme_color = (a.get("content") or "").strip()[:20]
         style = a.get("style", "")
         self.css_colors.extend(re.findall(r"#[0-9a-fA-F]{6}\b", style))
-        if tag == "meta" and a.get("property", "").lower() in ("og:image", "og:image:url") and a.get("content"):
+        if tag == "meta" and a.get("property", "").lower() in ("og:image", "og:image:url", "twitter:image") and a.get("content"):
             self.images.append(urljoin(self.base, a["content"]))
         elif tag == "img":
-            image = a.get("src") or a.get("data-src") or a.get("data-original")
+            image = (a.get("src") or a.get("data-src") or a.get("data-original") or a.get("data-lazy-src")
+                     or a.get("data-original-src") or a.get("data-image"))
             if image:
                 self.images.append(urljoin(self.base, image))
+            srcset = a.get("srcset") or a.get("data-srcset") or ""
+            choices = []
+            for candidate in srcset.split(","):
+                parts = candidate.strip().split()
+                if not parts:
+                    continue
+                scale = 0.0
+                if len(parts) > 1:
+                    descriptor = parts[1]
+                    try:
+                        scale = float(descriptor[:-1]) * (10000 if descriptor.endswith("w") else 1)
+                    except ValueError:
+                        pass
+                choices.append((scale, parts[0]))
+            if choices:
+                self.images.append(urljoin(self.base, max(choices)[1]))
         elif tag == "a" and (a.get("rel") or "").lower() == "image_src" and a.get("href"):
             self.images.append(urljoin(self.base, a["href"]))
         if tag == "script" and self._jsonld_data is not None:
@@ -204,6 +230,32 @@ def _normalise_products(raw_blocks: list[str], page_url: str, page_images: list[
     return list(unique.values())[:100]
 
 
+def _meta_product(meta: dict[str, str], page_url: str, images: list[str], headings: list[str], title: str) -> list[dict]:
+    """Build a reviewable product candidate from standard product/Open Graph metadata."""
+    path = urlparse(page_url).path.rstrip("/").lower()
+    product_path = bool(re.search(r"/(?:products?|items?|p)/[^/]+$", path))
+    product_type = meta.get("og:type", "").lower() in {"product", "product.item"}
+    amount = meta.get("product:price:amount") or meta.get("price")
+    if not (product_path or product_type or amount):
+        return []
+    name = (meta.get("og:title") or title or "").strip()
+    if not name:
+        return []
+    currency = (meta.get("product:price:currency") or meta.get("pricecurrency") or "").upper()[:3]
+    availability = meta.get("product:availability") or meta.get("availability") or ""
+    return [{
+        "name": name[:160],
+        "sku": (meta.get("product:retailer_item_id") or meta.get("sku") or "")[:64],
+        "category": (headings[1] if len(headings) > 1 else "")[:80],
+        "description": (meta.get("og:description") or "")[:3000],
+        "price": amount[:32] if amount else None,
+        "currency": currency,
+        "availability": availability.rsplit("/", 1)[-1][:40],
+        "image_urls": list(dict.fromkeys(images))[:8],
+        "source_url": page_url[:1000],
+    }]
+
+
 def _site_profile(raw_blocks: list[str]) -> dict:
     """Extract factual organization identity/location fields from Schema.org JSON-LD."""
     def nodes(value):
@@ -239,27 +291,36 @@ def _site_profile(raw_blocks: list[str]) -> dict:
     return {}
 
 
-def robots_allows(url: str) -> bool:
+def robots_allows(url: str, cache: dict[str, object] | None = None) -> bool:
     p = urlparse(url)
     robots_url = f"{p.scheme}://{p.netloc}/robots.txt"
-    try:
-        resp = safe_get(robots_url, max_bytes=200_000)
-    except BlockedURL:
-        raise
-    except Exception:  # noqa: BLE001 - unreachable robots.txt: be conservative only on 401/403 below
-        return True
-    if resp.status_code in (401, 403):
-        return False
-    if resp.status_code >= 400:
-        return True
-    rp = RobotFileParser()
-    rp.parse(resp.text.splitlines())
-    return rp.can_fetch(USER_AGENT, url)
+    if cache is not None and robots_url in cache:
+        rules = cache[robots_url]
+    else:
+        try:
+            resp = safe_get(robots_url, max_bytes=200_000)
+        except BlockedURL:
+            raise
+        except Exception:  # noqa: BLE001 - unreachable robots.txt: be conservative only on 401/403 below
+            rules = True
+        else:
+            if resp.status_code in (401, 403):
+                rules = False
+            elif resp.status_code >= 400:
+                rules = True
+            else:
+                parser = RobotFileParser()
+                parser.parse(resp.text.splitlines())
+                rules = parser
+        if cache is not None:
+            cache[robots_url] = rules
+    return rules.can_fetch(USER_AGENT, url) if isinstance(rules, RobotFileParser) else bool(rules)
 
 
-def fetch_page(url: str, *, allowed_domains: list[str] | None = None) -> PageSnapshot:
+def fetch_page(url: str, *, allowed_domains: list[str] | None = None,
+               robots_cache: dict[str, object] | None = None) -> PageSnapshot:
     try:
-        if not robots_allows(url):
+        if not robots_allows(url, robots_cache):
             raise FetchError(f"robots.txt disallows fetching {url}; skipped.")
         resp = safe_get(url, allowed_domains=allowed_domains)
     except BlockedURL as exc:
@@ -279,10 +340,15 @@ def fetch_page(url: str, *, allowed_domains: list[str] | None = None) -> PageSna
         raise FetchError(f"{url} is not a web page ({ctype or 'unknown type'}).")
     ex = _Extractor(str(resp.request.url))
     ex.feed(resp.text)
+    page_url = str(resp.request.url)
+    title = " ".join(ex.title.split())[:300]
+    products = _normalise_products(ex.jsonld, page_url, ex.images)
+    if not products:
+        products = _meta_product(ex.product_meta, page_url, ex.images, ex.headings, title)
     return PageSnapshot(
-        url=str(resp.request.url), status=resp.status_code, title=" ".join(ex.title.split())[:300],
-        description=ex.description, site_name=ex.site_name, text=ex.text()[:20000], headings=ex.headings, links=ex.links,
-        products=_normalise_products(ex.jsonld, str(resp.request.url), ex.images),
+        url=page_url, status=resp.status_code, title=title,
+        description=ex.description, text=ex.text()[:20000], headings=ex.headings, links=ex.links,
+        site_name=ex.site_name, product_meta=ex.product_meta, products=products,
         site_profile=_site_profile(ex.jsonld),
         colors=list(dict.fromkeys(([ex.theme_color] if re.fullmatch(r"#[0-9a-fA-F]{6}", ex.theme_color) else []) + ex.css_colors))[:8],
     )

@@ -4,6 +4,7 @@ import hashlib
 import re
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse, Response
@@ -84,6 +85,19 @@ class SiteScanIn(BaseModel):
     website: str = Field(min_length=8, max_length=255)
 
 
+def _scan_link_priority(link: str) -> int:
+    path = urlparse(link).path.lower()
+    if re.search(r"/(?:products?|items?|p)/[^/]+/?$", path):
+        return 0
+    if re.search(r"/(?:collections?|categories|category|shop)(?:/|$)", path):
+        return 1
+    if re.search(r"/(?:products?|catalogue|catalog|store)(?:/|$)", path):
+        return 2
+    if any(word in path for word in ("about", "contact", "service", "faq", "shipping", "returns")):
+        return 3
+    return 9
+
+
 @router.post("/onboarding/scan-website")
 def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
     """Inspect a small set of public pages on the submitted domain and return a reviewable draft."""
@@ -102,22 +116,25 @@ def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
     pages = []
     errors = []
     seen: set[str] = set()
-    while candidates and len(pages) < 6:
+    robots_cache: dict[str, object] = {}
+    while candidates and len(pages) < 10:
         page_url = candidates.pop(0).split("#", 1)[0]
         if page_url in seen:
             continue
         seen.add(page_url)
         try:
-            page = fetch_page(page_url, allowed_domains=[host])
+            page = fetch_page(page_url, allowed_domains=[host], robots_cache=robots_cache)
         except FetchError as exc:
             errors.append(str(exc)[:220])
             continue
         pages.append(page)
-        for link in page.links:
-            low = link.lower()
-            if host_of(link) == host and any(word in low for word in ("about", "product", "service", "contact", "faq", "collection")):
-                if link not in seen and link not in candidates:
-                    candidates.append(link)
+        prioritized_links = sorted(
+            ((_scan_link_priority(link), link) for link in page.links if host_of(link) == host),
+            key=lambda item: item[0],
+        )
+        for priority, link in prioritized_links:
+            if priority < 9 and link not in seen and link not in candidates:
+                candidates.append(link.split("#", 1)[0])
     if not pages:
         # A rate-limited site should not block onboarding. Return a deliberately sparse,
         # editable draft so the user can complete the profile manually or retry later.
