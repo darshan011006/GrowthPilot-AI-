@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "content_id": 19,
+  "platform": "instagram",
+  "format": "carousel",
+  "objective": "saves_per_reach: Create a seven-day Deepavali campaign for Poojaloka's diyas, brass items and pooja essentials across Instagram, Facebook, Pinterest and Threads, aimed at families in Bengaluru.",
+  "audience": "Families in Bengaluru and across Karnataka preparing for daily pooja and festivals; people setting up a first home altar. (Suggested from the catalogue and site; confirm with real customer data.)",
+  "festival": null,
+  "angle": "category_edit",
+  "image_policy": "text_only",
+  "image_refs": [],
+  "headline": "Browse our Pooja Essentials range",
+  "tagline": "Pooja Essentials for every day and festive days, at Poojaloka",
+  "cta": "Browse the range",
+  "required_text": [
+    "Browse our Pooja Essentials range",
+    "Pooja Essentials for every day and festive days, at Poojaloka",
+    "Browse the range",
+    "Poojaloka"
+  ],
+  "claims_allowed": [
+    {
+      "text": "Hari Leela\\Agarbatti 175 1 Pkt",
+      "product_sku": "hari-leela-agarbatti-175-1-pkt-8908018903059",
+      "field": "name",
+      "value": "Hari Leela\\Agarbatti 175 1 Pkt"
+    },
+    {
+      "text": "Category: Pooja Essentials",
+      "product_sku": "hari-leela-agarbatti-175-1-pkt-8908018903059",
+      "field": "category",
+      "value": "Pooja Essentials"
+    }
+  ],
+  "banned": [
+    "prices, MRP, discounts, offers, sale or coupon wording",
+    "stock, delivery or availability promises",
+    "purity, origin, authenticity, health or spiritual-benefit claims",
+    "deity imagery, religious figures, mantras or Sanskrit text",
+    "stock photos presented as the product",
+    "competitor names, text, layouts or imagery",
+    "any text other than required_text",
+    "“guaranteed blessings”",
+    "“miracle”",
+    "“100% pure”",
+    "“lowest price in India”",
+    "“Since 1980” (restricted: needs owner sign-off)",
+    "“Trusted by 10,000+ Devotees” (restricted: needs owner sign-off)",
+    "“Fast & Safe Delivery” (restricted: needs owner sign-off)",
+    "“Own delivery in Bengaluru” (restricted: needs owner sign-off)",
+    "“curated by artisans” (restricted: needs owner sign-off)"
+  ],
+  "style": {
+    "composition": "typographic",
+    "layout": "framed_border",
+    "palette": "d9722a-2b1810-6b1420",
+    "colors": [
+      "#D9722A",
+      "#2B1810",
+      "#6B1420"
+    ],
+    "mood": "warm, respectful and uncluttered"
+  },
+  "needs_human_review": false,
+  "canva_query": "Design a 1080×1350 (4:5 portrait) Instagram carousel cover for Poojaloka. Layout: thin decorative border frame around centred text. Colours #D9722A, #2B1810, #6B1420; mood: warm, respectful and uncluttered. Text, exactly as written: \"Browse our Pooja Essentials range\", \"Pooja Essentials for every day and festive days, at Poojaloka\", \"Browse the range\", \"Poojaloka\". Use exactly the quoted text and add no other words, numbers, prices, offers or claims. Typographic only: no product photos, stock photos, deities, religious figures, mantras or Sanskrit text.",
+  "signals": {
+    "trend_ids": [
+      8,
+      9
+    ],
+    "competitor_insight_ids": [
+      5
+    ],
+    "reason": "text only slot in the weekly mix; angle category edit; 2 supporting research signal(s); general carousel pattern seen in 1 competitor reference(s), not copied; Festival guide posts averaged 4.8% engagement (n=8); demo data"
+  },
+  "data_issues": [
+    {
+      "code": "stock_photo_only",
+      "message": "Hari Leela\\Agarbatti 175 1 Pkt: the store only lists a generic stock image, which is never shown as the product.",
+      "needs_review": false
+    },
+    {
+      "code": "price_not_verified",
+      "message": "Hari Leela\\Agarbatti 175 1 Pkt: the price isn't fresh or is flagged, so no price claim is allowed.",
+      "needs_review": false
+    }
+  ]
+}
