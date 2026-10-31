@@ -18,6 +18,7 @@ dist/
 *.key
 
 # Local databases and runtime data
+.pytest-*/
 data/*
 !data/.gitkeep
 *.db
@@ -39,3 +40,4 @@ frontend/next-env.d.ts
 
 # Local demo login written by `make demo`
 data/demo-login.txt
+backend/.pytest-*/

@@ -20,6 +20,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -611,6 +612,7 @@ class ContentItem(Base):
     validation: Mapped[dict | None] = mapped_column(JSON)  # last validation report
     # Typed CreativeBrief (agent.briefs, schema_version 1.0). Part of the versioned, approval-bound snapshot.
     creative_brief: Mapped[dict | None] = mapped_column(JSON)
+    canva_poster: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(20), default=ContentStatus.DRAFT, index=True)
     planned_at: Mapped[datetime | None] = mapped_column(DateTime)  # calendar slot (UTC)
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)  # UTC, set when scheduled
@@ -667,14 +669,20 @@ class ContentRevision(Base):
 class CanvaPosterJob(Base):
     """One idempotent Canva poster job per content item, matching migration a81d0a6f4a21."""
     __tablename__ = "canva_poster_jobs"
+    __table_args__ = (
+        Index("ix_canva_poster_jobs_content_id", "content_id", unique=True),
+        Index("ix_canva_poster_jobs_workspace_id", "workspace_id"),
+        Index("ix_canva_poster_jobs_status", "status"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
-    content_id: Mapped[int] = mapped_column(ForeignKey("content_items.id", ondelete="CASCADE"), unique=True)
-    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
-    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
-    calls_used: Mapped[int] = mapped_column(Integer, default=0)
-    error: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    content_id: Mapped[int] = mapped_column(ForeignKey("content_items.id", ondelete="CASCADE"),
+                                            nullable=False, unique=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="queued", server_default="queued", nullable=False)
+    calls_used: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    error: Mapped[str] = mapped_column(Text, default="", server_default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
 class PublishAttempt(Base):

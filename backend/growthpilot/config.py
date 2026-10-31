@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     canva_client_id: str = ""
     canva_client_secret: str = ""
     canva_redirect_uri: str = ""
+    canva_mcp_daily_cap: int = Field(default=10, ge=1, le=1000)
 
     @field_validator("canva_mcp_url")
     @classmethod
