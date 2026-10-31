@@ -29,6 +29,7 @@ class PageSnapshot:
     title: str
     description: str
     text: str
+    site_name: str = ""
     headings: list[str] = field(default_factory=list)
     links: list[str] = field(default_factory=list)
     products: list[dict] = field(default_factory=list)
@@ -44,6 +45,7 @@ class _Extractor(HTMLParser):
         self.base = base
         self.title = ""
         self.description = ""
+        self.site_name = ""
         self.headings: list[str] = []
         self.links: list[str] = []
         self.images: list[str] = []
@@ -70,6 +72,8 @@ class _Extractor(HTMLParser):
             self._in_title = True
         elif tag == "meta" and (a.get("name", "").lower() == "description" or a.get("property") == "og:description"):
             self.description = self.description or (a.get("content") or "")[:500]
+        if tag == "meta" and (a.get("property", "").lower() == "og:site_name" or a.get("name", "").lower() == "application-name"):
+            self.site_name = self.site_name or (a.get("content") or "").strip()[:120]
         if tag == "meta" and a.get("name", "").lower() == "theme-color":
             self.theme_color = (a.get("content") or "").strip()[:20]
         style = a.get("style", "")
@@ -277,7 +281,7 @@ def fetch_page(url: str, *, allowed_domains: list[str] | None = None) -> PageSna
     ex.feed(resp.text)
     return PageSnapshot(
         url=str(resp.request.url), status=resp.status_code, title=" ".join(ex.title.split())[:300],
-        description=ex.description, text=ex.text()[:20000], headings=ex.headings, links=ex.links,
+        description=ex.description, site_name=ex.site_name, text=ex.text()[:20000], headings=ex.headings, links=ex.links,
         products=_normalise_products(ex.jsonld, str(resp.request.url), ex.images),
         site_profile=_site_profile(ex.jsonld),
         colors=list(dict.fromkeys(([ex.theme_color] if re.fullmatch(r"#[0-9a-fA-F]{6}", ex.theme_color) else []) + ex.css_colors))[:8],

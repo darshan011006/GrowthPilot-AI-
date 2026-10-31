@@ -139,10 +139,13 @@ def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
                                                         "claims", "social accounts"]},
                 "warnings": [warning]}
     home = pages[0]
-    title = home.title.split(" | ")[0].split(" — ")[0].split(" - ")[0].strip()
     profiles = [p.site_profile for p in pages if p.site_profile]
     profile = profiles[0] if profiles else {}
-    name = (profile.get("name") or title)[:120] or host.removeprefix("www.").split(".")[0].replace("-", " ").title()
+    host_parts = host.removeprefix("www.").split(".")
+    suffix_size = 2 if len(host_parts) >= 3 and host_parts[-2] in {"co", "com", "org", "net", "gov", "ac"} else 1
+    domain_label = host_parts[-(suffix_size + 1)] if len(host_parts) > suffix_size else host_parts[0]
+    domain_name = domain_label.replace("-", " ").replace("_", " ").title()
+    name = (profile.get("name") or home.site_name or domain_name)[:120]
     description = home.description or next((p.description for p in pages if p.description), "") or profile.get("description", "")
     text_chunks = [p.text for p in pages]
     headings = list(dict.fromkeys(h for p in pages for h in p.headings))[:20]
@@ -336,6 +339,9 @@ def save_brand(body: BrandIn, ctx: Ctx = Depends(get_ctx)):
                                              for s in data["permitted_sources"]], 255)
     for k, v in data.items():
         setattr(b, k, v.strip() if isinstance(v, str) else v)
+    # This workspace represents a single client brand, so keep its app-wide label
+    # in sync with the company name shown in Brand Brain.
+    ctx.workspace.name = body.name.strip()
     ctx.db.flush()
     audit.record(ctx.db, "brand.created" if created else "brand.updated", workspace_id=ctx.workspace.id,
                  user_id=ctx.user.id, target_type="brand", target_id=b.id, ip=ctx.ip)
