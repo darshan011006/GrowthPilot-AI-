@@ -3,7 +3,7 @@
 import { Download, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth, useCan } from "@/components/auth";
 import { ContentStatusBadge, EvidenceBadge, PLATFORM_ORDER, PLATFORMS, PlatformChip, SourceLink, SyntheticBadge, ValidationPanel } from "@/components/domain";
 import { PlatformPreview } from "@/components/post-preview";
@@ -136,6 +136,120 @@ function CreativePanel({ item, editable, onSaved }: { item: ContentItem; editabl
   );
 }
 
+type PosterStatus = {
+  job: { id: number; status: string; calls_used: number; error: string } | null;
+  poster: ContentItem["canva_poster"];
+};
+
+function CanvaPosterPanel({ item, editable, onSaved }: { item: ContentItem; editable: boolean; onSaved: (i: ContentItem) => void }) {
+  const path = `/api/content/${item.id}/canva-poster`;
+  const posterState = useApi<PosterStatus>(path);
+  const connection = useApi<{ status: string; message?: string }>("/api/integrations/canva/status");
+  const act = useAction();
+  const fallback = useAction();
+  const edit = useAction();
+  const [editLink, setEditLink] = useState<string | null>(null);
+  const job = posterState.data?.job;
+  const poster = posterState.data?.poster || item.canva_poster;
+  const active = !!job && ["queued", "generating", "exporting", "qa"].includes(job.status);
+  const connected = connection.data?.status === "connected";
+  const stepNames = ["Queued", "Generating", "Exporting", "QA", "In review"];
+  const stepIndex = job?.status === "queued" ? 0 : job?.status === "generating" ? 1
+    : job?.status === "exporting" ? 2 : job?.status === "qa" ? 3
+      : job?.status === "completed" ? 4 : -1;
+  const imageId = poster?.asset_id || (job?.status === "completed" ? item.asset_id : null);
+  const imageUrl = item.assets?.find((asset) => asset.id === imageId)?.url || (imageId ? `/api/assets/${imageId}/file` : null);
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(posterState.reload, 1800);
+    return () => window.clearInterval(timer);
+  }, [active, posterState.reload]);
+
+  useEffect(() => {
+    if (job?.status !== "completed" || !imageId || item.asset_id === imageId) return;
+    void api.get<ContentItem>(`/api/content/${item.id}`).then(onSaved).catch(() => undefined);
+  }, [job?.status, imageId, item.asset_id, item.id, onSaved]);
+
+  const requestPoster = async () => {
+    const result = await act.run(() => api.post<{ job_id: number; status: string; calls_used: number }>(path, {}));
+    if (result) void posterState.reload();
+  };
+  const renderFallback = async () => {
+    const result = await fallback.run(() => api.post<ContentItem>(`/api/content/${item.id}/creative`, {}));
+    if (result) onSaved(result);
+  };
+  const fetchEditLink = async () => {
+    const result = await edit.run(() => api.get<{ edit_url: string }>(`/api/content/${item.id}/canva-poster/edit-link`));
+    if (result?.edit_url) setEditLink(result.edit_url);
+  };
+  const unavailable = !connected;
+  const canUseRenderer = editable && ["post", "carousel"].includes(item.content_type);
+
+  return (
+    <Card title="Canva poster" subtitle="Private design generation; a person must review and approve before publishing.">
+      {connection.loading ? <p className="mb-3 text-sm text-muted">Checking Canva connection…</p> : unavailable ? (
+        <Alert tone="warn" title="Canva is unavailable for this workspace">
+          {connection.data?.message || connection.error || "Connect Canva to generate editable designs."} {" "}
+          <Link href="/integrations" className="underline">Open integrations</Link>
+        </Alert>
+      ) : null}
+      {posterState.error && <div className="mb-3"><Alert tone="bad">{posterState.error}</Alert></div>}
+      {job?.status === "failed" && <Alert tone="bad" title="Canva poster failed">{job.error || poster?.error || "The design could not be completed."}</Alert>}
+
+      {job && (
+        <div className="my-4 rounded-xl border border-line bg-panel-2 p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold">Job {job.id}</span>
+            <Badge tone={job.status === "failed" ? "bad" : job.status === "completed" ? "ok" : "info"}>{job.status.replace(/_/g, " ")}</Badge>
+            {poster?.mode && <Badge>{poster.mode}</Badge>}
+          </div>
+          {job.status !== "failed" ? (
+            <ol aria-label="Canva poster progress" className="grid gap-2 text-xs sm:grid-cols-5">
+              {stepNames.map((name, index) => <li key={name} className={cx("rounded-lg border px-2 py-2", index < stepIndex ? "border-ok/30 bg-ok-soft text-ok" : index === stepIndex ? "border-accent bg-accent-soft text-accent" : "border-line text-muted")}>
+                <span className="mr-1" aria-hidden>{index < stepIndex ? "✓" : index === stepIndex ? "●" : "○"}</span>{name}
+              </li>)}
+            </ol>
+          ) : <div className="mt-2 text-xs text-muted">Design ID: {poster?.design_id || "not created"}</div>}
+        </div>
+      )}
+
+      {imageUrl && <div className="my-3 max-w-sm overflow-hidden rounded-xl border border-line bg-panel-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={imageUrl} alt="Generated Canva poster awaiting human review" className="block h-auto w-full" />
+        <a href={`${imageUrl}?download=1`} className="block border-t border-line p-2 text-center text-xs font-semibold text-accent hover:underline">Download PNG</a>
+      </div>}
+
+      {poster?.qa && <div className="my-3 rounded-xl border border-line p-3">
+        <div className="mb-2 flex items-center gap-2"><span className="text-sm font-semibold">Quality review</span>
+          <Badge tone={poster.qa.passed ? "ok" : "warn"}>{poster.qa.status.replace(/_/g, " ")}</Badge>
+        </div>
+        {poster.qa.issues.length > 0 && <ul className="list-disc space-y-1 pl-5 text-xs text-muted">{poster.qa.issues.map((issue, index) => <li key={`${index}-${issue}`}>{issue}</li>)}</ul>}
+      </div>}
+
+      {poster?.image_skip_reason && <p className="mb-2 text-xs text-muted">{poster.image_skip_reason}</p>}
+      {poster?.design_id && <p className="mb-2 break-all text-xs text-muted">Canva design ID: {poster.design_id}</p>}
+      {poster?.design_id && !editLink && <Button size="sm" busy={edit.busy} onClick={fetchEditLink}>Get Canva edit link</Button>}
+      {editLink && <a href={editLink} target="_blank" rel="noopener noreferrer" className="ml-2 inline-flex rounded-lg border border-line px-2.5 py-1 text-xs font-semibold text-accent hover:bg-panel-2">Open in Canva ↗</a>}
+      {edit.error && <p className="mt-2 text-xs text-bad">{edit.error}</p>}
+
+      {(job?.status === "failed" || unavailable) && canUseRenderer && (
+        <div className="mt-3 rounded-xl border border-line p-3">
+          <p className="mb-2 text-xs text-muted">Use GrowthPilot&apos;s built-in, claim-checked renderer instead. Its output also requires human approval.</p>
+          <Button busy={fallback.busy} onClick={renderFallback}>Generate with built-in renderer</Button>
+          {fallback.error && <p className="mt-2 text-xs text-bad">{fallback.error}</p>}
+        </div>
+      )}
+
+      {editable && <div className="mt-3 flex flex-wrap gap-2">
+        <Button variant="primary" busy={act.busy} disabled={!connected || active || job?.status === "completed"}
+          onClick={requestPoster}>{job?.status === "failed" ? "Retry Canva poster" : "Generate Canva poster"}</Button>
+      </div>}
+      {item.status === "in_review" && <p className="mt-3 text-xs font-semibold text-warn">Human approval is still required before any publishing.</p>}
+    </Card>
+  );
+}
+
 function Editor({ item, setData }: { item: ContentItem; setData: (i: ContentItem) => void }) {
   const id = item.id;
   const can = useCan();
@@ -231,6 +345,7 @@ function Editor({ item, setData }: { item: ContentItem; setData: (i: ContentItem
           </Card>
 
           <CreativePanel item={item} editable={editable} onSaved={setData} />
+          <CanvaPosterPanel item={item} editable={editable} onSaved={setData} />
 
           <Card title="Verification" actions={<Button size="sm" busy={act.busy} onClick={async () => { const v = await act.run(() => api.post(`/api/content/${id}/validate`)); if (v) setData({ ...item, validation: v as ContentItem["validation"] }); }}>Re-check</Button>}>
             <ValidationPanel v={item.validation} version={item.version} />

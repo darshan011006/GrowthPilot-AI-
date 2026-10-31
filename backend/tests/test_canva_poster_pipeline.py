@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
 from growthpilot.agent.briefs import CreativeBrief
@@ -89,46 +87,12 @@ def test_poster_png_is_persisted_as_workspace_asset_and_invalidates_approval(mon
     assert cleared == [4] and job.status == "completed"
 
 
-class _Response:
-    def __init__(self, status, payload=None, content=b""):
-        self.status_code, self._payload, self.content = status, payload, content
-
-    def json(self):
-        return self._payload
-
-
-class _Http:
-    def __init__(self, **_kwargs):
-        self.calls = 0
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *_args):
-        return None
-
-    async def post(self, *_args, **_kwargs):
-        return _Response(200, {"job": {"id": "export-1", "status": "in_progress"}})
-
-    async def get(self, url, **_kwargs):
-        if "/exports/" in url:
-            return _Response(200, {"job": {"status": "success", "urls": ["https://download.invalid/file?sig=private"]}})
-        return _Response(200, content=b"\x89PNG\r\n\x1a\nmock")
-
-
-class _Scalar:
-    def scalar_one_or_none(self):
-        return type("Credential", (), {"credentials_enc": "mock-ciphertext"})()
-
-
-class _DB:
-    def execute(self, _statement):
-        return _Scalar()
-
-
-def test_rest_export_fallback_is_separate_and_validates_png():
-    with patch("growthpilot.services.canva_poster_pipeline.decrypt_json", return_value={"access_token": "fake-test-token"}):
-        result = _run_mocked(rest_export(_DB(), 2, "design-1", client_factory=_Http, sleep=_no_sleep))
+def test_rest_export_fallback_delegates_to_development_interface(monkeypatch):
+    async def mocked_export(design_id, **_kwargs):
+        assert design_id == "design-1"
+        return b"\x89PNG\r\n\x1a\nmock"
+    monkeypatch.setattr("growthpilot.services.canva_rest_dev.export_png", mocked_export)
+    result = _run_mocked(rest_export(None, 2, "design-1"))
     assert result.startswith(b"\x89PNG\r\n\x1a\n")
 
 

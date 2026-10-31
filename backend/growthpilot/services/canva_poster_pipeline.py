@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import re
-import time
 from decimal import Decimal, InvalidOperation
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select, update
@@ -29,10 +28,8 @@ from ..models import (
     ContentItem,
     ContentStatus,
     Product,
-    ProviderCredential,
     utcnow,
 )
-from ..security import decrypt_json
 from . import assets
 
 MAX_JOB_CALLS = 3
@@ -185,77 +182,70 @@ async def _upload_trusted_images(client, db, workspace_id: int, brand: Brand, br
         if not asset or asset.workspace_id != workspace_id or asset.brand_id not in (None, brand.id):
             continue
         trust = ref.get("trust", "unknown")
-        if asset.source in {"stock", "placeholder", "catalogue_stock"} or trust not in {"real_match", "uploaded"}:
+        if asset.source not in {"catalogue", "upload"} or trust not in {"real_match", "uploaded"}:
             continue
-        data = assets.store().path(asset.storage_key).read_bytes()
-        if len(data) > assets.MAX_UPLOAD_BYTES:
-            raise CanvaMCPError("Trusted product image exceeds Canva upload limit.")
-        schema = client.schema("create-upload-url")
-        values = {"filename": asset.filename, "name": asset.filename, "content_type": asset.content_type,
-                  "mime_type": asset.content_type, "file_size": len(data), "size_bytes": len(data),
-                  "user_intent": f"Upload verified {brand.name} product photo for private poster creation."}
-        args = {k: v for k, v in values.items() if k in schema.get("properties", {})}
-        if set(schema.get("required", [])) - set(args):
-            raise CanvaMCPError("Canva upload schema has required fields GrowthPilot cannot safely map.")
-        result = await client.call("create-upload-url", args)
-        upload_url = _nested(result, "upload_url", "uploadUrl")
-        media_id = _nested(result, "asset_id", "media_id", "assetId")
-        if not isinstance(upload_url, str) or not upload_url.startswith("https://") or not isinstance(media_id, str):
-            raise CanvaMCPError("Canva upload response omitted a safe URL or asset id.")
-        async with httpx.AsyncClient(timeout=60, follow_redirects=False) as http:
-            response = await http.put(upload_url, content=data, headers={"Content-Type": asset.content_type})
-        if response.status_code >= 300:
-            raise CanvaMCPError(f"Canva image upload failed with HTTP {response.status_code}.")
-        ids.append(media_id)
+        ids.append(await _upload_asset(client, asset, f"Upload verified product photo for {brand.name}."))
     return ids
+
+
+async def _upload_asset(client, asset: Asset, user_intent: str) -> str:
+    data = assets.store().path(asset.storage_key).read_bytes()
+    if len(data) > assets.MAX_UPLOAD_BYTES:
+        raise CanvaMCPError("Brand or product image exceeds Canva upload limit.")
+    schema = client.schema("create-upload-url")
+    values = {"filename": asset.filename, "name": asset.filename, "content_type": asset.content_type,
+              "mime_type": asset.content_type, "file_size": len(data), "size_bytes": len(data),
+              "user_intent": user_intent[:255]}
+    args = {k: v for k, v in values.items() if k in schema.get("properties", {})}
+    if set(schema.get("required", [])) - set(args):
+        raise CanvaMCPError("Canva upload schema has required fields GrowthPilot cannot safely map.")
+    result = await client.call("create-upload-url", args)
+    upload_url = _nested(result, "upload_url", "uploadUrl")
+    media_id = _nested(result, "asset_id", "media_id", "assetId")
+    if not isinstance(upload_url, str) or not upload_url.startswith("https://") or not isinstance(media_id, str):
+        raise CanvaMCPError("Canva upload response omitted a safe URL or asset id.")
+    async with httpx.AsyncClient(timeout=60, follow_redirects=False) as http:
+        response = await http.put(upload_url, content=data, headers={"Content-Type": asset.content_type})
+    if response.status_code >= 300:
+        raise CanvaMCPError(f"Canva image upload failed with HTTP {response.status_code}.")
+    return media_id
+
+
+async def _upload_brand_logo(client, db, workspace_id: int, brand: Brand) -> str | None:
+    if not brand.logo_asset_id or "create-upload-url" not in client.tools:
+        return None
+    asset = db.get(Asset, brand.logo_asset_id)
+    if (asset is None or asset.workspace_id != workspace_id or asset.brand_id not in (None, brand.id)
+            or asset.kind != "logo" or asset.content_type not in {"image/png", "image/jpeg"}):
+        return None
+    return await _upload_asset(client, asset, f"Upload the official {brand.name} brand logo for poster identity.")
+
+
+def _brand_prompt(query: str, brand: Brand, logo_attached: bool, brief: CreativeBrief,
+                  image_skip_reason: str | None = None) -> str:
+    if image_skip_reason:
+        sentences = re.split(r"(?<=[.!?])\s+", query.strip())
+        query = " ".join(sentence for sentence in sentences
+                         if not re.search(r"\b(supplied|attached)\s+(?:product\s+)?photo\b", sentence, re.I))
+        query += " Text-led layout only; do not depict or redraw a specific product."
+    palette = ", ".join(str(color)[:24] for color in (brand.colors or [])[:5]) or "use the brand profile palette"
+    tone = (brand.tone or brand.voice or "clear and consistent with the brand profile")[:120]
+    identity = (f"Brand identity: show the name \"{brand.name}\" exactly. Tone: {tone}. Palette: {palette}. "
+                + ("Use the attached official brand logo without changing it. " if logo_attached
+                   else f"No logo file is available; render \"{brand.name}\" as a text wordmark. "))
+    allowed = "; ".join(claim.text for claim in brief.claims_allowed)[:500]
+    guardrails = "Use no claims beyond the validated brief and product records. Do not invent prices, discounts, "
+    guardrails += "materials, origin, health, or quality claims."
+    if allowed:
+        guardrails += f" Approved product facts: {allowed}."
+    return f"{identity}{query.strip()}\n{guardrails}"[:3500]
 
 
 async def rest_export(db, workspace_id: int, design_id: str, *, client_factory=httpx.AsyncClient,
                       sleep=asyncio.sleep) -> bytes:
-    """REST export fallback; it requires a distinct encrypted canva_rest credential."""
-    row = db.execute(select(ProviderCredential).where(ProviderCredential.workspace_id == workspace_id,
-        ProviderCredential.provider == "canva_rest")).scalar_one_or_none()
-    if row is None:
-        raise CanvaMCPError("MCP export had no download URL; connect a separate Canva REST credential.")
-    token = decrypt_json(row.credentials_enc).get("access_token")
-    if not token:
-        raise CanvaMCPError("Canva REST credential has no access token.")
-    root = "https://api.canva.com/rest/v1"
-    async with client_factory(timeout=30, follow_redirects=False) as client:
-        r = await client.post(root + "/exports", headers={"Authorization": f"Bearer {token}"}, json={
-            "design_id": design_id, "format": {"type": "png", "width": 1080, "height": 1350,
-                                                  "as_single_image": True}})
-        if r.status_code >= 400:
-            raise CanvaMCPError(f"Canva REST export failed with HTTP {r.status_code}.")
-        payload = r.json()
-        export_id = _nested(payload, "id", "export_id", "exportId")
-        if not isinstance(export_id, str):
-            raise CanvaMCPError("Canva REST export response omitted job id.")
-        end = time.monotonic() + 120
-        while time.monotonic() < end:
-            state = str(_nested(payload, "status") or "").lower()
-            if state in {"success", "succeeded", "completed", "done"}:
-                break
-            if state in {"failed", "error", "cancelled"}:
-                raise CanvaMCPError("Canva REST export job failed.")
-            await sleep(3)
-            r = await client.get(f"{root}/exports/{quote(export_id, safe='')}",
-                                 headers={"Authorization": f"Bearer {token}"})
-            if r.status_code >= 400:
-                raise CanvaMCPError(f"Canva REST export polling failed with HTTP {r.status_code}.")
-            payload = r.json()
-        else:
-            raise CanvaMCPError("Canva REST export timed out after 120 seconds.")
-        url = next(_urls(payload), None)
-        if not url or urlparse(url).scheme != "https":
-            raise CanvaMCPError("Canva REST export omitted an HTTPS download URL.")
-        try:
-            r = await client.get(url, follow_redirects=True)
-        except Exception as exc:
-            raise CanvaMCPError(f"PNG download failed ({type(exc).__name__}); URL redacted.") from None
-        if r.status_code != 200 or not r.content.startswith(b"\x89PNG\r\n\x1a\n"):
-            raise CanvaMCPError(f"PNG download failed validation (HTTP {r.status_code}).")
-        return r.content
+    """Development-only token fallback; isolated behind a mockable REST interface."""
+    from .canva_rest_dev import export_png
+    return await export_png(design_id, client_factory=client_factory, sleep=sleep)
 
 
 async def process_job(db, job: CanvaPosterJob, *, rest_exporter=rest_export) -> None:
@@ -279,16 +269,27 @@ async def process_job(db, job: CanvaPosterJob, *, rest_exporter=rest_export) -> 
         if not {"generate-design", "create-design-from-candidate"}.issubset(client.tools):
             raise CanvaMCPError("Authenticated Canva MCP is missing required allow-listed tools.")
         cap = getattr(settings, "canva_mcp_daily_cap", 10)
+        generate_schema = client.schema("generate-design")
+        can_attach_assets = "asset_ids" in generate_schema.get("properties", {})
+        if brief.image_policy == "must_use_images" and not can_attach_assets:
+            raise CanvaMCPError("Canva generate-design schema cannot accept the required verified image asset.")
         uploaded_ids = await _upload_trusted_images(client, db, job.workspace_id, brand, brief) \
-            if brief.image_policy != "text_only" and "create-upload-url" in client.tools else []
+            if brief.image_policy != "text_only" and can_attach_assets and "create-upload-url" in client.tools else []
+        logo_id = await _upload_brand_logo(client, db, job.workspace_id, brand) if can_attach_assets else None
         image_trust = "uploaded" if uploaded_ids else "none"
         if brief.image_policy == "must_use_images" and not uploaded_ids:
             raise CanvaMCPError("Required image policy has no verified real-match or uploaded image available.")
+        image_skip_reason = None
+        if brief.image_policy != "text_only" and not uploaded_ids:
+            image_skip_reason = ("The generate-design schema cannot attach product images." if not can_attach_assets
+                                 else "No verified product image was attachable; poster was generated text-only.")
         q = handoff.get("canva_query")
         if not q:
             raise CanvaMCPError("CreativeBrief has no Canva query.")
-        args = generate_design_args(client.tools["generate-design"], query=q,
-            user_intent=f"Create a private {brief.format} draft for human review.", asset_ids=uploaded_ids or None)
+        query = _brand_prompt(q, brand, logo_id is not None, brief, image_skip_reason)
+        all_asset_ids = [*uploaded_ids, *([logo_id] if logo_id else [])]
+        args = generate_design_args(client.tools["generate-design"], query=query,
+            user_intent=f"Create a private {brief.format} draft for human review.", asset_ids=all_asset_ids or None)
         job.calls_used += 1
         reserve_daily_generation(db, limit=cap, now=utcnow())
         db.commit()
@@ -310,32 +311,39 @@ async def process_job(db, job: CanvaPosterJob, *, rest_exporter=rest_export) -> 
         if not isinstance(design_id, str):
             raise CanvaMCPError("Canva commit returned no design id.")
         job.status = "exporting"
-        db.flush()
+        item.canva_poster = {"job_id": job.id, "design_id": design_id, "asset_id": None,
+                             "mode": "image-based" if uploaded_ids else "text-only",
+                             "image_trust": image_trust, "image_skip_reason": None,
+                             "edit_link_available": bool(_nested(committed, "edit_url", "editUrl"))}
+        db.commit()
         png = None
         if "export-design" in client.tools:
-            exported = await client.call("export-design", _schema_args(client, "export-design", {
-                "design_id": design_id, "format": "png", "export_format": "png", "as_single_image": True,
-                "user_intent": "Export poster PNG for review."}))
-            for url in _urls(exported):
-                if urlparse(url).scheme != "https":
-                    continue
-                async with httpx.AsyncClient(timeout=45, follow_redirects=True) as downloader:
-                    try:
-                        r = await downloader.get(url)
-                    except httpx.HTTPError:
+            try:
+                exported = await client.call("export-design", _schema_args(client, "export-design", {
+                    "design_id": design_id, "format": "png", "export_format": "png", "as_single_image": True,
+                    "user_intent": "Export poster PNG for review."}))
+                for url in _urls(exported):
+                    if urlparse(url).scheme != "https":
                         continue
-                if r.status_code == 200 and r.content.startswith(b"\x89PNG\r\n\x1a\n"):
-                    png = r.content
-                    break
+                    async with httpx.AsyncClient(timeout=45, follow_redirects=True) as downloader:
+                        try:
+                            r = await downloader.get(url)
+                        except httpx.HTTPError:
+                            continue
+                    if r.status_code == 200 and r.content.startswith(b"\x89PNG\r\n\x1a\n"):
+                        png = r.content
+                        break
+            except CanvaMCPError:
+                # REST export is the only fallback when MCP export is absent or unusable.
+                png = None
         if png is None:
             png = await rest_exporter(db, job.workspace_id, design_id)
     if len(png) > assets.MAX_UPLOAD_BYTES:
         raise CanvaMCPError("Exported poster exceeds the supported 8 MB asset limit.")
-    image_skip_reason = None
-    if brief.image_policy != "text_only" and image_trust != "uploaded":
-        image_skip_reason = "No verified product image was attached; poster was generated text-only."
     qa = _qa_verdict(brief, brand, product, image_used=image_trust == "uploaded",
                      image_skip_reason=image_skip_reason)
+    job.status = "qa"
+    db.commit()
     _persist_poster(db, item, job, brand, png, design_id, qa,
                     image_trust=image_trust, image_skip_reason=image_skip_reason,
                     edit_link_available=bool(_nested(committed, "edit_url", "editUrl")))
@@ -361,6 +369,10 @@ def process_queued(db, *, limit=1):
             if job:
                 job.status = "failed"
                 job.error = safe_canva_message(str(exc))[:500] or type(exc).__name__
+                item = db.get(ContentItem, job.content_id)
+                poster = getattr(item, "canva_poster", None) if item else None
+                if isinstance(poster, dict) and poster.get("job_id") == job.id:
+                    item.canva_poster = {**poster, "error": job.error}
                 db.commit()
         processed += 1
     return processed
