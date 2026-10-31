@@ -17,10 +17,10 @@ from ...config import get_settings
 from ...db import get_db
 from ...models import Asset, Brand, Persona, Product
 from ...platforms import ORDER
-from ...services import assets as asset_service
-from ...services.errors import WorkflowError
 from ...research.net import host_of
 from ...research.web import FetchError, fetch_page
+from ...services import assets as asset_service
+from ...services.errors import WorkflowError
 from .. import serializers as S
 from ..deps import ApiError, Ctx, get_ctx, rate_limit
 
