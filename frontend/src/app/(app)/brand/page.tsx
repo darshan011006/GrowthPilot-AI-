@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useCan } from "@/components/auth";
 import { FreshnessBadge, ImageKindBadge, PLATFORM_ORDER, PlatformChip, SyntheticBadge } from "@/components/domain";
 import { Alert, Badge, Button, Card, Empty, Field, Input, ListInput, Loading, Modal, PageHeader, Tabs, Textarea, useAction, useApi } from "@/components/ui";
@@ -10,65 +11,149 @@ import type { Asset, Brand, Persona, Product } from "@/lib/types";
 
 type Tab = "profile" | "marketing" | "claims" | "personas" | "products" | "festivals" | "assets";
 
+type WebsiteProduct = { name: string; sku: string; category: string; description: string; price: string | null; currency: string;
+  availability: string; image_urls: string[]; source_url: string };
 type WebsiteDraft = { name: string; website: string; description: string; positioning: string; content_pillars: string[];
   profile_sources: { field: string; source_url: string; retrieved_at: string; note: string }[];
-  pages_scanned: { url: string; title: string }[]; text_preview: string; needs_user_confirmation: string[] };
+  pages_scanned: { url: string; title: string }[]; products: WebsiteProduct[]; text_preview: string; needs_user_confirmation: string[] };
+const productKey = (product: WebsiteProduct) => `${product.source_url}|${product.sku}|${product.name}`;
+
+function csvRows(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [], cell = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"' && quoted && text[i + 1] === '"') { cell += '"'; i++; }
+    else if (ch === '"') quoted = !quoted;
+    else if (ch === "," && !quoted) { row.push(cell.trim()); cell = ""; }
+    else if ((ch === "\n" || ch === "\r") && !quoted) {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell.trim());
+      if (row.some(Boolean)) rows.push(row);
+      row = []; cell = "";
+    } else cell += ch;
+  }
+  row.push(cell.trim());
+  if (row.some(Boolean)) rows.push(row);
+  return rows;
+}
 
 function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | null }) {
   const [website, setWebsite] = useState("");
   const [draft, setDraft] = useState<WebsiteDraft | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [audience, setAudience] = useState(brand?.audience || "");
+  const [voice, setVoice] = useState(brand?.voice || "");
+  const [goals, setGoals] = useState(brand?.goals || "");
+  const [platforms, setPlatforms] = useState<string[]>(brand?.platform_preferences || []);
+  const [completion, setCompletion] = useState<{ products: number; photos: number } | null>(null);
   const scan = useAction();
   const save = useAction();
   const runScan = async () => {
-    setDraft(null); setWarnings([]);
+    setDraft(null); setWarnings([]); setCompletion(null);
     const r = await scan.run(() => api.post<{ draft: WebsiteDraft; warnings: string[] }>("/api/onboarding/scan-website", { website }));
-    if (r) { setDraft(r.draft); setWarnings(r.warnings); }
+    if (r) {
+      setDraft(r.draft); setWarnings(r.warnings);
+      setSelectedProducts(new Set(r.draft.products.map(productKey)));
+    }
   };
   const continueManually = () => {
     const normalized = website.trim().startsWith("http") ? website.trim() : `https://${website.trim()}`;
-    let host = "";
-    try { host = new URL(normalized).hostname.replace(/^www\./, ""); } catch { /* show validation below */ }
+    const host = (() => { try { return new URL(normalized).hostname; } catch { return ""; } })();
     if (!host) { scan.setError("Enter a valid website URL first."); return; }
-    setDraft({ name: host.split(".")[0].replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      website: normalized, description: "", positioning: "", content_pillars: [], profile_sources: [],
-      pages_scanned: [], text_preview: "", needs_user_confirmation: ["description", "audience", "voice", "goals", "claims"] });
+    setDraft({ name: host.replace(/^www\./, "").split(".")[0].replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      website: normalized, description: "", positioning: "", content_pillars: [], profile_sources: [], pages_scanned: [],
+      products: [], text_preview: "", needs_user_confirmation: ["description", "audience", "voice", "goals", "claims"] });
+    setSelectedProducts(new Set());
+    setCompletion(null);
+  };
+  const importCsv = async (file?: File) => {
+    if (!file || !draft) return;
+    const rows = csvRows(await file.text());
+    if (rows.length < 2) { scan.setError("CSV needs a header row and at least one product row."); return; }
+    const headers = rows[0].map((h) => h.replace(/^\uFEFF/, "").toLowerCase().trim().replace(/[ -]+/g, "_"));
+    const get = (cells: string[], ...keys: string[]) => {
+      const index = headers.findIndex((h) => keys.includes(h));
+      return index >= 0 ? (cells[index] || "") : "";
+    };
+    if (!headers.includes("name")) { scan.setError("CSV needs a 'name' column. Optional columns: sku, category, description, price, currency, image_url, product_url."); return; }
+    const imported = rows.slice(1).map((cells, index) => ({
+      name: get(cells, "name"), sku: get(cells, "sku") || `csv-${index + 1}`, category: get(cells, "category"),
+      description: get(cells, "description"), price: get(cells, "price") || null, currency: get(cells, "currency"),
+      availability: "", source_url: get(cells, "product_url", "source_url") || draft.website,
+      image_urls: (get(cells, "image_url", "image_urls") || "").split(/[|;]/).map((x) => x.trim()).filter(Boolean),
+    })).filter((p) => p.name.trim());
+    if (!imported.length) { scan.setError("No product rows with a name were found in that CSV."); return; }
+    const products = [...draft.products, ...imported].slice(0, 50);
+    setDraft({ ...draft, products });
+    setSelectedProducts(new Set(products.map(productKey)));
+    scan.setError(null);
   };
   const confirm = async () => {
     if (!draft) return;
     const existing = editable(brand);
-    const r = await save.run(() => api.put("/api/brand", { ...existing,
+    const r = await save.run(async () => {
+      await api.put("/api/brand", { ...existing,
       name: draft.name.trim(), website: draft.website, description: draft.description || existing.description,
-      positioning: draft.positioning || existing.positioning,
-      content_pillars: draft.content_pillars.length ? draft.content_pillars : existing.content_pillars,
+      positioning: draft.positioning, content_pillars: draft.content_pillars,
+      audience: audience.trim() || existing.audience, voice: voice.trim() || existing.voice,
+      goals: goals.trim() || existing.goals, platform_preferences: platforms,
       profile_sources: [...(brand?.profile_sources || []), ...draft.profile_sources],
       permitted_sources: [...new Set([...existing.permitted_sources, new URL(draft.website).hostname])],
-    }));
-    if (r) onSaved();
+      });
+      const chosen = draft.products.filter((p) => selectedProducts.has(productKey(p)));
+      const result = chosen.length ? await api.post<{ created: number; updated: number; photos_downloaded: number; warnings: string[] }>(
+        "/api/onboarding/import-products", { website: draft.website, products: chosen }) :
+        { created: 0, updated: 0, photos_downloaded: 0, warnings: [] };
+      return result;
+    });
+    if (r) { setWarnings((prev) => [...prev, ...r.warnings]); setCompletion({ products: r.created + r.updated, photos: r.photos_downloaded }); onSaved(); }
   };
-  return <Card title="Set up your brand from its website" subtitle="We read a few public pages and prepare a draft. Review it before agents use it; no website password is needed.">
+  const sampleGoal = draft ? `Create one Instagram product post for ${draft.name} using a confirmed product from the catalogue. Use only verified product facts and its real product photo when available. Do not publish.` : "";
+  return <Card title="Set up your brand from its website" subtitle="We prepare a brand and product draft from public pages. Review it, answer only the few gaps, and confirm. No website password is needed.">
     <div className="flex flex-col gap-2 sm:flex-row"><Input aria-label="Business website" type="url" placeholder="https://yourbusiness.com" value={website} onChange={(e) => setWebsite(e.target.value)} />
       <Button variant="primary" busy={scan.busy} onClick={runScan} disabled={!website.trim()}>Scan website</Button></div>
-    {brand?.catalogue_source?.kind === "poojaloka_store_api" && website.trim() && (() => {
-      try {
-        const host = new URL(website.trim().startsWith("http") ? website.trim() : `https://${website.trim()}`).hostname.toLowerCase().replace(/^www\./, "");
-        if (host === "poojaloka.com" || host.endsWith(".poojaloka.com")) return null;
-        return <p className="mt-2 text-xs text-muted">Confirming this website will disconnect the Poojaloka catalogue and archive its imported products.</p>;
-      } catch { return null; }
-    })()}
     {scan.error && <div className="mt-3 flex flex-wrap items-center gap-2"><Alert tone="bad">{scan.error}</Alert><Button size="sm" onClick={continueManually}>Continue setup manually</Button></div>}
     {warnings.length > 0 && <div className="mt-3"><Alert tone="info" title="Some pages were skipped">{warnings.join(" ")}</Alert></div>}
     {draft && <div className="mt-4 space-y-3 rounded-xl border border-line p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2"><strong>Review the website draft</strong><Badge tone="warn">Confirm before use</Badge></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><strong>Review your setup draft</strong><Badge tone="warn">Confirm before use</Badge></div>
       <Field label="Suggested business name">{(id) => <Input id={id} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />}</Field>
       <Field label="Suggested description">{(id) => <Textarea id={id} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />}</Field>
       <Field label="Page topics / positioning">{(id) => <Textarea id={id} value={draft.positioning} onChange={(e) => setDraft({ ...draft, positioning: e.target.value })} />}</Field>
+      <div className="rounded-lg border border-line bg-panel-2 p-3">
+        <p className="mb-2 text-sm font-semibold">A few details only you know</p>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Who do you sell to?">{(id) => <Input id={id} value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. first-time homeowners" />}</Field>
+          <Field label="How should the brand sound?">{(id) => <Input id={id} value={voice} onChange={(e) => setVoice(e.target.value)} placeholder="e.g. warm, practical, confident" />}</Field>
+          <Field label="Main goal right now">{(id) => <Input id={id} value={goals} onChange={(e) => setGoals(e.target.value)} placeholder="e.g. product discovery" />}</Field>
+        </div>
+        <div className="mt-2"><span className="mr-2 text-xs text-muted">Channels to focus on:</span><div className="inline-flex flex-wrap gap-2">{PLATFORM_ORDER.map((p) => <label key={p} className="flex cursor-pointer items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs"><input type="checkbox" checked={platforms.includes(p)} onChange={(e) => setPlatforms(e.target.checked ? [...platforms, p] : platforms.filter((x) => x !== p))} /><PlatformChip platform={p} withLabel /></label>)}</div></div>
+      </div>
+      <div className="rounded-lg border border-line p-3">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-semibold">Products found</p><p className="text-xs text-muted">We use structured facts published by your site; select what should enter the catalogue.</p></div><Badge>{draft.products.length} found</Badge></div>
+        {draft.products.length === 0 ? <p className="text-sm text-muted">No structured product listings were found. Add a product CSV or continue with an empty catalogue and add products later.</p> : (
+          <div className="max-h-80 space-y-2 overflow-y-auto">{draft.products.map((p) => {
+            const key = productKey(p);
+            return <label key={key} className="flex cursor-pointer gap-3 rounded-lg border border-line p-2.5 hover:border-accent">
+              <input type="checkbox" className="mt-1" checked={selectedProducts.has(key)} onChange={(e) => setSelectedProducts((current) => { const next = new Set(current); if (e.target.checked) next.add(key); else next.delete(key); return next; })} />
+              {p.image_urls[0] && <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.image_urls[0]} alt="" referrerPolicy="no-referrer" className="h-16 w-16 rounded-md bg-panel-2 object-cover" />
+              </>}
+              <span className="min-w-0 flex-1"><span className="block font-medium">{p.name}</span><span className="block text-xs text-muted">{p.category || "Product"} · {p.price && Number.isFinite(Number(p.price)) ? (p.currency ? fmtPrice(Number(p.price), p.currency) : `${p.price} (currency not listed)`) : "Price not found"}{p.availability ? ` · ${p.availability}` : ""}</span><span className="block truncate text-xs text-muted">{p.source_url}</span></span>
+            </label>;
+          })}</div>
+        )}
+        <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:border-accent">Import product CSV<input type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => { void importCsv(e.target.files?.[0]); e.target.value = ""; }} /></label>
+        <p className="mt-1 text-xs text-muted">CSV columns: name (required), sku, category, description, price, currency, image_url, product_url. Product URLs should use this same website.</p>
+      </div>
       <p className="text-xs text-muted">Scanned {draft.pages_scanned.length} pages: {draft.pages_scanned.map((p) => p.title || p.url).join(" · ")}</p>
       {draft.profile_sources.length > 0 && <details className="text-xs text-muted"><summary className="cursor-pointer">Show source evidence</summary><ul className="mt-2 space-y-1">{draft.profile_sources.map((s, i) => <li key={`${s.source_url}-${i}`}><a className="text-info underline" href={s.source_url} target="_blank" rel="noreferrer">{s.source_url}</a> — {s.note}</li>)}</ul></details>}
       {draft.text_preview && <details className="text-xs text-muted"><summary className="cursor-pointer">Preview extracted page text</summary><p className="mt-2 whitespace-pre-wrap">{draft.text_preview}</p></details>}
-      <p className="text-xs text-muted">Please complete audience, brand voice, goals, approved claims, and connect social channels after saving.</p>
+      <p className="text-xs text-muted">Review factual details and add approved claims later. GrowthPilot won&apos;t invent prices, offers, or guarantees.</p>
       {save.error && <Alert tone="bad">{save.error}</Alert>}
-      <Button variant="primary" busy={save.busy} onClick={confirm} disabled={!draft.name.trim()}>{brand ? "Confirm website and save" : "Confirm and create brand profile"}</Button>
+      <div className="flex flex-wrap items-center gap-3"><Button variant="primary" busy={save.busy} onClick={confirm} disabled={!draft.name.trim()}>Confirm setup{selectedProducts.size ? ` · ${selectedProducts.size} products` : ""}</Button>{completion && <span className="text-sm text-muted">Setup saved · {completion.products} products · {completion.photos} photos imported</span>}{completion && completion.products > 0 && sampleGoal && <Link className="rounded-lg border border-accent/40 px-3 py-2 text-sm font-semibold text-accent hover:bg-accent-soft" href={`/agent?goal=${encodeURIComponent(sampleGoal)}`}>Create a sample post ↗</Link>}</div>
     </div>}
   </Card>;
 }
