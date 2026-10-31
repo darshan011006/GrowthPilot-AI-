@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 import pytest
+from PIL import Image
 
 from growthpilot.agent.briefs import CreativeBrief
 from growthpilot.models import Brand, CanvaPosterJob
 from growthpilot.services.canva_poster_pipeline import (
     _design_id,
+    _overlay_brand_mark,
     _persist_poster,
     _qa_verdict,
     _schema_args,
@@ -14,6 +18,26 @@ from growthpilot.services.canva_poster_pipeline import (
     process_queued,
     rest_export,
 )
+
+
+@pytest.mark.parametrize("with_logo", [True, False])
+def test_brand_mark_overlay_changes_exported_png(with_logo):
+    poster = Image.new("RGB", (600, 750), (224, 205, 180))
+    poster_bytes = BytesIO()
+    poster.save(poster_bytes, format="PNG")
+    logo_bytes = None
+    if with_logo:
+        logo = Image.new("RGBA", (120, 60), (120, 15, 35, 255))
+        logo_stream = BytesIO()
+        logo.save(logo_stream, format="PNG")
+        logo_bytes = logo_stream.getvalue()
+
+    result = _overlay_brand_mark(poster_bytes.getvalue(), "Example Brand", logo_bytes)
+
+    assert result != poster_bytes.getvalue()
+    with Image.open(BytesIO(result)) as branded:
+        assert branded.size == (600, 750)
+        assert branded.mode == "RGBA"
 
 
 def test_poster_job_mapping_matches_applied_migration():

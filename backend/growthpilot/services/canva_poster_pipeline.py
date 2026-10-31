@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+from PIL import Image, ImageDraw, ImageFont, ImageStat
 from sqlalchemy import select, update
 
 from ..agent.briefs import ClaimAllowed, CreativeBrief, to_canva_handoff, validate_brief
@@ -150,6 +151,72 @@ def _persist_poster(db, item: ContentItem, job: CanvaPosterJob, brand: Brand, pn
                          "edit_link_available": edit_link_available}
     job.status = "completed"
     job.error = "Poster is stored and awaiting human visual review."
+
+
+def _overlay_brand_mark(png: bytes, brand_name: str, logo_bytes: bytes | None = None) -> bytes:
+    """Overlay a corner logo, or a contrast-safe text wordmark, before asset hashing/storage."""
+    from io import BytesIO
+
+    with Image.open(BytesIO(png)) as source:
+        poster = source.convert("RGBA")
+    width, height = poster.size
+    if not width or not height:
+        raise CanvaMCPError("Exported poster has invalid dimensions.")
+    margin = max(8, round(width * 0.025))
+    max_mark_width = max(1, round(width * 0.12))
+    max_mark_height = max(1, round(height * 0.12))
+
+    logo = None
+    if logo_bytes:
+        try:
+            with Image.open(BytesIO(logo_bytes)) as source_logo:
+                logo = source_logo.convert("RGBA")
+            logo.thumbnail((max_mark_width, max_mark_height), Image.Resampling.LANCZOS)
+        except (OSError, ValueError):
+            logo = None
+
+    if logo is not None:
+        x = width - margin - logo.width
+        y = margin
+        poster.alpha_composite(logo, (x, y))
+    else:
+        name = (brand_name or "Brand").strip()[:120] or "Brand"
+        max_text_width = max(1, min(max_mark_width, width - margin * 2))
+        font_size = max(10, round(width * 0.035))
+        while font_size > 8:
+            font = ImageFont.load_default(size=font_size)
+            box = ImageDraw.Draw(poster).textbbox((0, 0), name, font=font, stroke_width=1)
+            if box[2] - box[0] <= max_text_width:
+                break
+            font_size -= 1
+        font = ImageFont.load_default(size=font_size)
+        x = max(margin, width - margin - (ImageDraw.Draw(poster).textbbox((0, 0), name, font=font)[2]))
+        y = margin
+        # Sample the underlay to select a readable fill and contrasting outline.
+        sample_box = poster.crop((x, y, min(width, x + max_text_width), min(height, y + font_size * 2)))
+        brightness = sum(ImageStat.Stat(sample_box.convert("RGB")).mean) / 3
+        fill, stroke = ((30, 20, 20, 255), (255, 248, 235, 255)) if brightness > 150 else (
+            (255, 248, 235, 255), (40, 20, 24, 255))
+        ImageDraw.Draw(poster).text((x, y), name, font=font, fill=fill, stroke_width=max(1, font_size // 12),
+                                    stroke_fill=stroke)
+
+    output = BytesIO()
+    poster.save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+def _brand_logo_bytes(db, brand: Brand, workspace_id: int) -> bytes | None:
+    """Load only this workspace brand's raster logo; invalid/missing files use the wordmark fallback."""
+    if not brand.logo_asset_id:
+        return None
+    logo = db.get(Asset, brand.logo_asset_id)
+    if (logo is None or logo.workspace_id != workspace_id or logo.brand_id not in (None, brand.id)
+            or logo.kind != "logo" or logo.content_type not in {"image/png", "image/jpeg"}):
+        return None
+    try:
+        return assets.store().path(logo.storage_key).read_bytes()
+    except (OSError, ValueError):
+        return None
 
 
 def validate_brief_for_item(db, item: ContentItem, brand: Brand) -> tuple[CreativeBrief, dict[str, Any]]:
@@ -340,6 +407,9 @@ async def process_job(db, job: CanvaPosterJob, *, rest_exporter=rest_export) -> 
             png = await rest_exporter(db, job.workspace_id, design_id)
     if len(png) > assets.MAX_UPLOAD_BYTES:
         raise CanvaMCPError("Exported poster exceeds the supported 8 MB asset limit.")
+    png = _overlay_brand_mark(png, brand.name, _brand_logo_bytes(db, brand, job.workspace_id))
+    if len(png) > assets.MAX_UPLOAD_BYTES:
+        raise CanvaMCPError("Branded poster exceeds the supported 8 MB asset limit.")
     qa = _qa_verdict(brief, brand, product, image_used=image_trust == "uploaded",
                      image_skip_reason=image_skip_reason)
     job.status = "qa"
