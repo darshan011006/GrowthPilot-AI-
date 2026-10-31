@@ -750,7 +750,7 @@ class AgentRun(Base):
     campaign_id: Mapped[int | None] = mapped_column(ForeignKey("campaigns.id", ondelete="SET NULL"))
     goal: Mapped[str] = mapped_column(Text)
     intent: Mapped[str] = mapped_column(String(30), default="")
-    planner: Mapped[str] = mapped_column(String(40))  # demo-planner | claude:<model>
+    planner: Mapped[str] = mapped_column(String(40))  # demo-planner | <provider>:<model> | rules:<provider>:<model>
     status: Mapped[str] = mapped_column(String(30), default=RunStatus.QUEUED, index=True)
     plan: Mapped[list] = mapped_column(JSON, default=list)  # [{"id","tool","purpose","status"}]
     state: Mapped[dict] = mapped_column(JSON, default=dict)  # working memory (ids of produced records, etc.)

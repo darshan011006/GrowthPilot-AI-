@@ -61,8 +61,9 @@ class Settings(BaseSettings):
     asset_dir: str = ""
 
     # LLM. Demo mode always uses the deterministic planner and generator.
-    # auto = Gemini if GEMINI_API_KEY is set, else Anthropic if LLM_API_KEY/ANTHROPIC_API_KEY is set.
-    llm_provider: str = "auto"  # auto | gemini | anthropic
+    # auto = Groq if GROQ_API_KEY is set, else Gemini if GEMINI_API_KEY is set, else Anthropic if
+    # LLM_API_KEY/ANTHROPIC_API_KEY is set.
+    llm_provider: str = "auto"  # auto | groq | gemini | anthropic
     llm_api_key: str = ""  # Anthropic key (kept for compatibility)
     anthropic_api_key: str = ""  # accepted as an alias for LLM_API_KEY
     llm_model: str = "claude-opus-5-5"  # Anthropic model
@@ -70,6 +71,13 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.8-flash"
     gemini_thinking_level: str = "medium"  # minimal | low | medium | high (per-model support varies)
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_tier: str = "free"  # free | developer (free records $0 cost but still counts tokens)
+    groq_reasoning_effort: str = "low"  # low | medium | high
+    # Live-mode planning. model = the LLM chooses tools each turn; rules = the fixed step plan, with the LLM only
+    # writing text (about ten times fewer tokens); auto = rules on Groq's free tier, model otherwise.
+    agent_planner: str = "auto"  # auto | model | rules
 
     # Research
     search_provider: str = "brave"  # brave | none
@@ -142,10 +150,14 @@ class Settings(BaseSettings):
     @property
     def active_llm_provider(self) -> str | None:
         """Which LLM provider live mode will use, or None if none is configured."""
+        if self.llm_provider == "groq":
+            return "groq" if self.groq_api_key else None
         if self.llm_provider == "gemini":
             return "gemini" if self.gemini_api_key else None
         if self.llm_provider == "anthropic":
             return "anthropic" if self.llm_key else None
+        if self.groq_api_key:
+            return "groq"
         if self.gemini_api_key:
             return "gemini"
         return "anthropic" if self.llm_key else None
@@ -156,7 +168,15 @@ class Settings(BaseSettings):
 
     @property
     def active_llm_model(self) -> str:
-        return self.gemini_model if self.active_llm_provider == "gemini" else self.llm_model
+        return {"groq": self.groq_model, "gemini": self.gemini_model}.get(self.active_llm_provider or "",
+                                                                         self.llm_model)
+
+    @property
+    def uses_rules_planner(self) -> bool:
+        """Live runs follow the fixed step plan (the LLM writes text only) instead of model-chosen tools."""
+        if self.agent_planner == "auto":
+            return self.active_llm_provider == "groq" and self.groq_tier == "free"
+        return self.agent_planner == "rules"
 
     @property
     def brave_key(self) -> str:
@@ -202,7 +222,7 @@ class Settings(BaseSettings):
         out = []
         if self.is_live:
             if not self.llm_configured:
-                out.append({"key": "GEMINI_API_KEY (or LLM_API_KEY)",
+                out.append({"key": "GROQ_API_KEY (or GEMINI_API_KEY / LLM_API_KEY)",
                             "impact": "Agent runs and content generation are unavailable."})
             if not self.search_configured:
                 out.append({"key": "BRAVE_SEARCH_API_KEY", "impact": "Web research is unavailable; agent will say so."})
@@ -217,8 +237,14 @@ class Settings(BaseSettings):
     def _fill_and_check(self) -> Settings:
         if self.llm_effort not in {"low", "medium", "high", "xhigh", "max"}:
             raise ConfigError("LLM_EFFORT must be one of low, medium, high, xhigh, max")
-        if self.llm_provider not in {"auto", "anthropic", "gemini"}:
-            raise ConfigError("LLM_PROVIDER must be auto, gemini or anthropic.")
+        if self.llm_provider not in {"auto", "groq", "anthropic", "gemini"}:
+            raise ConfigError("LLM_PROVIDER must be auto, groq, gemini or anthropic.")
+        if self.groq_tier not in {"free", "developer"}:
+            raise ConfigError("GROQ_TIER must be free or developer.")
+        if self.groq_reasoning_effort not in {"low", "medium", "high"}:
+            raise ConfigError("GROQ_REASONING_EFFORT must be low, medium or high.")
+        if self.agent_planner not in {"auto", "model", "rules"}:
+            raise ConfigError("AGENT_PLANNER must be auto, model or rules.")
         if self.gemini_thinking_level not in {"minimal", "low", "medium", "high"}:
             raise ConfigError("GEMINI_THINKING_LEVEL must be minimal, low, medium or high.")
         if self.search_provider not in {"brave", "none"}:
@@ -256,9 +282,9 @@ def _load_or_create_demo_keys() -> dict[str, str]:
     DATA_DIR.mkdir(exist_ok=True)
     path = DATA_DIR / "demo-secrets.json"
     if path.exists():
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     keys = {"secret_key": secrets.token_urlsafe(48), "encryption_key": Fernet.generate_key().decode()}
-    path.write_text(json.dumps(keys))
+    path.write_text(json.dumps(keys), encoding="utf-8")
     path.chmod(0o600)
     return keys
 
