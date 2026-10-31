@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -15,9 +16,9 @@ from ... import audit
 from ... import catalogue as catalogue_mod
 from ...config import get_settings
 from ...db import get_db
-from ...models import Asset, Brand, Persona, Product
+from ...models import Asset, Brand, Persona, Product, utcnow
 from ...platforms import ORDER
-from ...research.net import host_of
+from ...research.net import domain_allowed, host_of
 from ...research.web import FetchError, fetch_page
 from ...services import assets as asset_service
 from ...services.errors import WorkflowError
@@ -87,13 +88,15 @@ class SiteScanIn(BaseModel):
 def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
     """Inspect a small set of public pages on the submitted domain and return a reviewable draft."""
     ctx.require_editor()
-    rate_limit(f"site-scan:{ctx.workspace.id}", 5, 3600)
     url = body.website.strip()
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     host = host_of(url)
     if not host:
         raise ApiError(400, "Enter a valid public website URL.", "validation")
+    # Keep limits scoped to each target so trying a different client website doesn't
+    # consume the workspace's allowance for every other site.
+    rate_limit(f"site-scan:{ctx.workspace.id}:{host}", 5, 3600)
     # Only fetch same-host pages, and keep the crawl deliberately small.
     candidates = [url]
     pages = []
@@ -116,13 +119,54 @@ def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
                 if link not in seen and link not in candidates:
                     candidates.append(link)
     if not pages:
-        raise ApiError(422, errors[0] if errors else "No readable public pages were found.", "scan_failed")
+        # A rate-limited site should not block onboarding. Return a deliberately sparse,
+        # editable draft so the user can complete the profile manually or retry later.
+        # Do not infer business details from a hostname.
+        rate_limited = any("HTTP 429" in error for error in errors)
+        if not rate_limited:
+            raise ApiError(422, errors[0] if errors else "No readable public pages were found.", "scan_failed")
+        fallback_name = host.removeprefix("www.").split(".")[0].replace("-", " ").title()
+        warning = (
+            f"{host} rate-limited the scan (HTTP 429). No page content was read. "
+            "Retry later or complete this draft manually; no business details were inferred."
+        )
+        return {"draft": {"name": fallback_name, "website": url, "description": "", "positioning": "",
+                           "location": "", "audience": "", "voice": "", "tone": "", "goals": "",
+                           "visual_guidelines": "", "colors": [],
+                           "content_pillars": [], "profile_sources": [], "pages_scanned": [], "text_preview": "",
+                           "products": [],
+                           "needs_user_confirmation": ["description", "positioning", "audience", "voice", "goals",
+                                                        "claims", "social accounts"]},
+                "warnings": [warning]}
     home = pages[0]
-    title = home.title.split(" | ")[0].split(" — ")[0].split(" - ")[0].strip()
-    name = title[:120] or host.removeprefix("www.").split(".")[0].replace("-", " ").title()
-    description = home.description or next((p.description for p in pages if p.description), "")
+    profiles = [p.site_profile for p in pages if p.site_profile]
+    profile = profiles[0] if profiles else {}
+    host_parts = host.removeprefix("www.").split(".")
+    suffix_size = 2 if len(host_parts) >= 3 and host_parts[-2] in {"co", "com", "org", "net", "gov", "ac"} else 1
+    domain_label = host_parts[-(suffix_size + 1)] if len(host_parts) > suffix_size else host_parts[0]
+    domain_name = domain_label.replace("-", " ").replace("_", " ").title()
+    name = (profile.get("name") or home.site_name or domain_name)[:120]
+    description = home.description or next((p.description for p in pages if p.description), "") or profile.get("description", "")
     text_chunks = [p.text for p in pages]
     headings = list(dict.fromkeys(h for p in pages for h in p.headings))[:20]
+    all_text = " ".join([description, *(p.text for p in pages), *(p.title for p in pages)]).lower()
+    product_categories = list(dict.fromkeys(product.get("category", "") for page in pages for product in page.products if product.get("category")))
+    colors = list(dict.fromkeys(color for page in pages for color in page.colors))[:6]
+    location = profile.get("location", "")
+    audience = ""
+    if re.search(r"\b(men|menswear|for him)\b", all_text):
+        audience = "Men shopping for contemporary fashion; suggested from the site's product/category language."
+    elif re.search(r"\b(women|womenswear|for her)\b", all_text):
+        audience = "Women shopping for fashion; suggested from the site's product/category language."
+    elif product_categories:
+        audience = f"People shopping for {', '.join(product_categories[:3])}; suggested from listed product categories."
+    elif any(p.products for p in pages):
+        audience = "Online shoppers interested in the products listed on this site; confirm your target audience."
+    voice = "Confident and customer-focused; suggested from the site's public marketing copy."
+    tone = "Clear, helpful, and aligned with the site's wording; suggested from public page copy."
+    goals = "Help customers discover products and support online sales; suggested for an online storefront. Confirm your priorities."
+    visual = "Use the site's own product imagery and visual identity. Avoid introducing unsupported product, discount, or performance claims."
+    positioning = profile.get("slogan") or description or "\n".join(headings[:5])
     retrieved = datetime.now(UTC).isoformat()
     sources = []
     for page in pages:
@@ -132,13 +176,126 @@ def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
         if page.description:
             sources.append({"field": "description", "source_url": page.url, "retrieved_at": retrieved,
                             "note": page.description[:300]})
+        if page.site_profile.get("location"):
+            sources.append({"field": "location", "source_url": page.url, "retrieved_at": retrieved,
+                            "note": f"Structured business address: {page.site_profile['location']}"})
+    for field_name, value, note in (
+        ("positioning", positioning, "Suggested from published site description, slogan, or headings; review."),
+        ("audience", audience, "Suggested from public product/category language; confirm target audience."),
+        ("voice", voice, "Editorial suggestion based on public marketing copy, not a verified brand rule."),
+        ("tone", tone, "Editorial suggestion based on public page wording, not a verified brand rule."),
+        ("goals", goals, "Generic ecommerce suggestion; confirm business priorities."),
+        ("visual_guidelines", visual, "Suggested guardrail based on public product imagery and factual-content policy."),
+    ):
+        if value:
+            sources.append({"field": field_name, "source_url": home.url, "retrieved_at": retrieved, "note": note})
+    if colors:
+        sources.append({"field": "colors", "source_url": home.url, "retrieved_at": retrieved,
+                        "note": "Colors detected in the page theme/inline styles; verify against your official brand palette."})
+    discovered = []
+    seen_products = set()
+    for page in pages:
+        for product in page.products:
+            key = (product["source_url"], product.get("sku", ""), product["name"].lower())
+            if key not in seen_products:
+                seen_products.add(key)
+                discovered.append(product)
     return {"draft": {"name": name, "website": url, "description": description,
-                       "positioning": "\n".join(headings[:8]),
+                       "location": location, "audience": audience, "voice": voice, "tone": tone,
+                       "goals": goals, "visual_guidelines": visual, "colors": colors,
+                       "positioning": positioning,
                        "content_pillars": headings[:8], "profile_sources": sources,
                        "pages_scanned": [{"url": p.url, "title": p.title} for p in pages],
+                       "products": discovered[:50],
                        "text_preview": "\n".join(text_chunks)[:1600],
-                       "needs_user_confirmation": ["audience", "voice", "goals", "claims", "social accounts"]},
+                       "needs_user_confirmation": ["location", "audience", "voice", "tone", "goals", "visual_guidelines", "colors", "claims", "social accounts"]},
             "warnings": errors[:4]}
+
+
+class ProductImportIn(BaseModel):
+    website: str = Field(min_length=8, max_length=255)
+    products: list[dict] = Field(default_factory=list, max_length=50)
+
+
+@router.post("/onboarding/import-products")
+def import_onboarding_products(body: ProductImportIn, ctx: Ctx = Depends(get_ctx)):
+    """Save user-reviewed structured products, retaining source facts and real product photos."""
+    ctx.require_editor()
+    rate_limit(f"product-import:{ctx.workspace.id}", 10, 3600)
+    b = current_brand(ctx)
+    website_host = host_of(body.website).removeprefix("www.")
+    if not website_host:
+        raise ApiError(400, "Enter a valid website before importing products.", "validation")
+    created = updated = photos_downloaded = 0
+    warnings = []
+    for raw in body.products:
+        name = str(raw.get("name") or "").strip()[:160]
+        source_url = str(raw.get("source_url") or "")
+        if not name or not domain_allowed(host_of(source_url).removeprefix("www."), [website_host]):
+            warnings.append("Skipped a product without a valid same-website source.")
+            continue
+        source_sku = str(raw.get("sku") or "").strip()[:64]
+        source_ref = f"web:{hashlib.sha256(f'{source_url}:{source_sku}:{name.lower()}'.encode()).hexdigest()}"
+        digest = hashlib.sha256(f"{website_host}:{source_url}:{source_sku}:{name.lower()}".encode()).hexdigest()[:16]
+        sku = f"web-{digest}"
+        p = ctx.db.execute(select(Product).where(Product.brand_id == b.id,
+                                                  Product.source_ref == source_ref)).scalar_one_or_none()
+        is_new = p is None
+        if p is None:
+            p = Product(workspace_id=ctx.workspace.id, brand_id=b.id, sku=sku)
+            ctx.db.add(p)
+        else:
+            old_asset_id = p.image_asset_id
+            p.image_asset_id = old_asset_id
+        price = raw.get("price")
+        try:
+            p.price = Decimal(str(price).replace(",", "")) if price not in (None, "") else None
+            if p.price is not None and p.price < 0:
+                p.price = None
+        except (InvalidOperation, ValueError):
+            p.price = None
+            warnings.append(f"{name}: price wasn't a readable number and was left blank.")
+        raw_images = raw.get("image_urls") if isinstance(raw.get("image_urls"), list) else []
+        image_urls = [str(value)[:1000] for value in raw_images[:8]
+                      if isinstance(value, str) and host_of(value)]
+        p.name = name
+        p.category = str(raw.get("category") or "Product")[:80]
+        p.collection = ""
+        p.description = str(raw.get("description") or "")[:3000]
+        p.currency = str(raw.get("currency") or "").upper()[:3] or "XXX"
+        p.stock = None
+        p.variants = []
+        p.image_urls = image_urls
+        p.image_kind = "product_photo" if image_urls else "none"
+        p.source_url = source_url[:1000]
+        p.source_ref = source_ref[:255]
+        p.retrieved_at = utcnow()
+        p.is_active = True
+        p.data_quality = [] if p.price is not None else [{"code": "no_price", "message": "The site did not expose a structured price."}]
+        if p.price is not None and p.currency == "XXX":
+            p.data_quality.append({"code": "no_currency", "message": "The site did not expose a price currency."})
+        p.verified_attributes = {"source_sku": source_sku} if source_sku else {}
+        if raw.get("availability"):
+            p.data_quality.append({"code": "source_availability", "message": f"Availability at source: {str(raw['availability'])[:40]}"})
+        ctx.db.flush()
+        if image_urls and not p.image_asset_id:
+            try:
+                photo = catalogue_mod.download_photo(ctx.db, b, p, image_urls[0])
+                if photo:
+                    p.image_asset_id = photo.id
+                    photos_downloaded += 1
+            except catalogue_mod.CatalogueError as exc:
+                warnings.append(f"{name}: product photo wasn't imported ({str(exc)[:120]}).")
+        if is_new:
+            created += 1
+        else:
+            updated += 1
+    audit.record(ctx.db, "catalogue.website_imported", workspace_id=ctx.workspace.id, user_id=ctx.user.id,
+                 target_type="brand", target_id=b.id, created=created, updated=updated,
+                 photos_downloaded=photos_downloaded)
+    ctx.db.commit()
+    return {"created": created, "updated": updated, "photos_downloaded": photos_downloaded,
+            "warnings": warnings[:20]}
 
 
 @router.put("/brand")
@@ -154,6 +311,17 @@ def save_brand(body: BrandIn, ctx: Ctx = Depends(get_ctx)):
     if created:
         b = Brand(workspace_id=ctx.workspace.id)
         ctx.db.add(b)
+    # The bundled Poojaloka connector is store-specific. If this workspace changes
+    # its website, detach that connector and archive its imported rows so agents
+    # cannot use Poojaloka products for the new brand.
+    old_source = b.catalogue_source or {}
+    if (old_source.get("kind") == "poojaloka_store_api"
+            and not domain_allowed(host_of(body.website), ["poojaloka.com"])):
+        b.catalogue_source = {}
+        old_products = ctx.db.execute(select(Product).where(Product.brand_id == b.id)).scalars().all()
+        for product in old_products:
+            if product.source_url and domain_allowed(host_of(product.source_url), ["poojaloka.com"]):
+                product.is_active = False
     data = body.model_dump()
     for k in ("approved_claims", "restricted_claims", "prohibited_messaging", "content_pillars", "languages",
               "marketing_objectives", "fonts"):
@@ -171,6 +339,9 @@ def save_brand(body: BrandIn, ctx: Ctx = Depends(get_ctx)):
                                              for s in data["permitted_sources"]], 255)
     for k, v in data.items():
         setattr(b, k, v.strip() if isinstance(v, str) else v)
+    # This workspace represents a single client brand, so keep its app-wide label
+    # in sync with the company name shown in Brand Brain.
+    ctx.workspace.name = body.name.strip()
     ctx.db.flush()
     audit.record(ctx.db, "brand.created" if created else "brand.updated", workspace_id=ctx.workspace.id,
                  user_id=ctx.user.id, target_type="brand", target_id=b.id, ip=ctx.ip)
@@ -271,6 +442,12 @@ def sync_catalogue(body: SyncIn, ctx: Ctx = Depends(get_ctx)):
     if src_cfg.get("kind") != "poojaloka_store_api":
         raise ApiError(400, "No catalogue connector is set for this brand. Add products manually or by CSV.",
                        "no_connector")
+    if not domain_allowed(host_of(b.website or ""), ["poojaloka.com"]):
+        raise ApiError(
+            400,
+            "The Poojaloka catalogue can only sync to a Poojaloka website.",
+            "catalogue_domain_mismatch",
+        )
     source = catalogue_mod.get_source(b)
     if source is None:
         from ...catalogue.poojaloka import SnapshotSource
