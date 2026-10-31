@@ -10,6 +10,52 @@ import type { Asset, Brand, Persona, Product } from "@/lib/types";
 
 type Tab = "profile" | "marketing" | "claims" | "personas" | "products" | "festivals" | "assets";
 
+type WebsiteDraft = { name: string; website: string; description: string; positioning: string; content_pillars: string[];
+  profile_sources: { field: string; source_url: string; retrieved_at: string; note: string }[];
+  pages_scanned: { url: string; title: string }[]; text_preview: string; needs_user_confirmation: string[] };
+
+function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | null }) {
+  const [website, setWebsite] = useState("");
+  const [draft, setDraft] = useState<WebsiteDraft | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const scan = useAction();
+  const save = useAction();
+  const runScan = async () => {
+    setDraft(null); setWarnings([]);
+    const r = await scan.run(() => api.post<{ draft: WebsiteDraft; warnings: string[] }>("/api/onboarding/scan-website", { website }));
+    if (r) { setDraft(r.draft); setWarnings(r.warnings); }
+  };
+  const confirm = async () => {
+    if (!draft) return;
+    const existing = editable(brand);
+    const r = await save.run(() => api.put("/api/brand", { ...existing,
+      name: draft.name.trim(), website: draft.website, description: draft.description,
+      positioning: draft.positioning, content_pillars: draft.content_pillars,
+      profile_sources: [...(brand?.profile_sources || []), ...draft.profile_sources],
+      permitted_sources: [...new Set([...existing.permitted_sources, new URL(draft.website).hostname])],
+    }));
+    if (r) onSaved();
+  };
+  return <Card title="Set up your brand from its website" subtitle="We read a few public pages and prepare a draft. Review it before agents use it; no website password is needed.">
+    <div className="flex flex-col gap-2 sm:flex-row"><Input aria-label="Business website" type="url" placeholder="https://yourbusiness.com" value={website} onChange={(e) => setWebsite(e.target.value)} />
+      <Button variant="primary" busy={scan.busy} onClick={runScan} disabled={!website.trim()}>Scan website</Button></div>
+    {scan.error && <div className="mt-3"><Alert tone="bad">{scan.error}</Alert></div>}
+    {warnings.length > 0 && <div className="mt-3"><Alert tone="info" title="Some pages were skipped">{warnings.join(" ")}</Alert></div>}
+    {draft && <div className="mt-4 space-y-3 rounded-xl border border-line p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2"><strong>Review the website draft</strong><Badge tone="warn">Confirm before use</Badge></div>
+      <Field label="Suggested business name">{(id) => <Input id={id} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />}</Field>
+      <Field label="Suggested description">{(id) => <Textarea id={id} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />}</Field>
+      <Field label="Page topics / positioning">{(id) => <Textarea id={id} value={draft.positioning} onChange={(e) => setDraft({ ...draft, positioning: e.target.value })} />}</Field>
+      <p className="text-xs text-muted">Scanned {draft.pages_scanned.length} pages: {draft.pages_scanned.map((p) => p.title || p.url).join(" · ")}</p>
+      {draft.profile_sources.length > 0 && <details className="text-xs text-muted"><summary className="cursor-pointer">Show source evidence</summary><ul className="mt-2 space-y-1">{draft.profile_sources.map((s, i) => <li key={`${s.source_url}-${i}`}><a className="text-info underline" href={s.source_url} target="_blank" rel="noreferrer">{s.source_url}</a> — {s.note}</li>)}</ul></details>}
+      {draft.text_preview && <details className="text-xs text-muted"><summary className="cursor-pointer">Preview extracted page text</summary><p className="mt-2 whitespace-pre-wrap">{draft.text_preview}</p></details>}
+      <p className="text-xs text-muted">Please complete audience, brand voice, goals, approved claims, and connect social channels after saving.</p>
+      {save.error && <Alert tone="bad">{save.error}</Alert>}
+      <Button variant="primary" busy={save.busy} onClick={confirm} disabled={!draft.name.trim()}>Confirm and create brand profile</Button>
+    </div>}
+  </Card>;
+}
+
 type BrandEdit = Omit<Brand, "id" | "is_synthetic" | "logo_asset_id" | "profile_sources" | "catalogue_source" | "festivals" | "articles" | "updated_at">;
 const EMPTY_BRAND: BrandEdit = {
   name: "", description: "", positioning: "", voice: "", tone: "", audience: "", location: "", goals: "", website: "",
@@ -330,6 +376,7 @@ export default function BrandPage() {
       <PageHeader title="Brand Brain" subtitle="Everything the agent knows about the brand. Agent runs load this first (as a frozen snapshot), and verification checks every post against it." actions={<>
         {brand && brand.colors.slice(0, 5).map((c) => <span key={c} title={c} className="h-6 w-6 rounded-full border border-line" style={{ background: c }} />)}
         {brand?.is_synthetic && <SyntheticBadge label="Fictional demo brand" />}</>} />
+      <div className="mb-4"><WebsiteSetup brand={brand} onSaved={reload} /></div>
       {brand && brand.profile_sources?.length > 0 && tab === "profile" && (
         <details className="mb-4 rounded-xl border border-line bg-panel p-3 text-sm">
           <summary className="cursor-pointer font-semibold">Where this profile came from ({brand.profile_sources.length})</summary>

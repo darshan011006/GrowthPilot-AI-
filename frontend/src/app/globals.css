@@ -1,61 +1,32 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #f7f5f1;
-  --panel: #ffffff;
-  --panel-2: #f1eee8;
-  --line: #e4dfd6;
-  --ink: #1d211d;
-  --muted: #5f655e;
-  --accent: #2f5d46;
-  --accent-ink: #ffffff;
-  --accent-soft: #e3eee7;
-  --warm: #b5643c;
-  --warm-soft: #f8e7dc;
-  --ok: #1f7a4d;
-  --ok-soft: #e1f3e9;
-  --warn: #8a5a00;
-  --warn-soft: #fdf1d8;
-  --bad: #b42318;
-  --bad-soft: #fde8e6;
-  --info: #2c5aa0;
-  --info-soft: #e5eefb;
-  --demo: #8a4b00;
-  --demo-soft: #fff0d9;
-  --chart-1: #2f5d46;
-  --chart-2: #b5643c;
-  --chart-3: #7a8f5c;
-  --chart-4: #8c6bb1;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #121412;
-    --panel: #1a1d1a;
-    --panel-2: #222622;
-    --line: #2f342f;
-    --ink: #e9ece8;
-    --muted: #9ba39a;
-    --accent: #7fc29b;
-    --accent-ink: #0f1a13;
-    --accent-soft: #1f3328;
-    --warm: #e39a72;
-    --warm-soft: #3a2619;
-    --ok: #6fd6a0;
-    --ok-soft: #17301f;
-    --warn: #f0c060;
-    --warn-soft: #382c12;
-    --bad: #ff8f84;
-    --bad-soft: #3b1c19;
-    --info: #8db4f0;
-    --info-soft: #1b2a40;
-    --demo: #ffc27a;
-    --demo-soft: #3a2810;
-    --chart-1: #7fc29b;
-    --chart-2: #e39a72;
-    --chart-3: #b7c98f;
-    --chart-4: #c0a4e6;
-  }
+  color-scheme: dark;
+  --bg: #080c0a;
+  --panel: #101814;
+  --panel-2: #16211b;
+  --line: #1d3027;
+  --ink: #f0f4f1;
+  --muted: #91a198;
+  --accent: #c5ff00;
+  --accent-ink: #080c0a;
+  --accent-soft: #202b12;
+  --warm: #ffa66b;
+  --warm-soft: #352316;
+  --ok: #55e7c8;
+  --ok-soft: #12352e;
+  --warn: #ffb454;
+  --warn-soft: #352812;
+  --bad: #ff6c74;
+  --bad-soft: #3a1c21;
+  --info: #71c8ff;
+  --info-soft: #122c3c;
+  --demo: #ffca78;
+  --demo-soft: #352813;
+  --chart-1: #c5ff00;
+  --chart-2: #ff6dbb;
+  --chart-3: #53dfcb;
+  --chart-4: #9c88ff;
 }
 
 @theme inline {
@@ -92,7 +63,11 @@ body {
 
 body {
   font-family: var(--font-sans);
+  background-image: radial-gradient(ellipse at 52% -20%, rgba(51, 95, 68, .12), transparent 54%);
 }
+
+button, a, input, select, textarea { transition: color .16s ease, background-color .16s ease, border-color .16s ease, opacity .16s ease; }
+::selection { background: rgba(197, 255, 0, .3); }
 
 :focus-visible {
   outline: 2px solid var(--accent);

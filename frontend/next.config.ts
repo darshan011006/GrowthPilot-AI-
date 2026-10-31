@@ -5,6 +5,8 @@ import type { NextConfig } from "next";
 const backend = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 
 const nextConfig: NextConfig = {
+  // Allow demo and live previews to run side by side without sharing Next's dev cache/lock.
+  distDir: process.env.GROWTHPILOT_DIST_DIR || ".next",
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,
