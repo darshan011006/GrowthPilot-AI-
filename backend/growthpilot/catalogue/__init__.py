@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from .. import audit
 from ..config import get_settings
 from ..models import Asset, Brand, Product, utcnow
+from ..research.net import domain_allowed, host_of
 
 log = logging.getLogger(__name__)
 
@@ -255,6 +256,9 @@ def get_source(brand: Brand) -> CatalogueSource | None:
     s = get_settings()
     cfg = brand.catalogue_source or {}
     if cfg.get("kind") != "poojaloka_store_api":
+        return None
+    # This connector is tied to Poojaloka's catalogue and must never populate another brand.
+    if not domain_allowed(host_of(brand.website or ""), ["poojaloka.com"]):
         return None
     if s.is_demo and not s.demo_allow_catalogue_sync:
         return None

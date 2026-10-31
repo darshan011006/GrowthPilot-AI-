@@ -17,7 +17,7 @@ from ...config import get_settings
 from ...db import get_db
 from ...models import Asset, Brand, Persona, Product
 from ...platforms import ORDER
-from ...research.net import host_of
+from ...research.net import domain_allowed, host_of
 from ...research.web import FetchError, fetch_page
 from ...services import assets as asset_service
 from ...services.errors import WorkflowError
@@ -154,6 +154,17 @@ def save_brand(body: BrandIn, ctx: Ctx = Depends(get_ctx)):
     if created:
         b = Brand(workspace_id=ctx.workspace.id)
         ctx.db.add(b)
+    # The bundled Poojaloka connector is store-specific. When a client confirms a
+    # different website, detach it and archive imported Poojaloka rows so agents
+    # cannot use those products for the new brand.
+    old_source = b.catalogue_source or {}
+    if (old_source.get("kind") == "poojaloka_store_api"
+            and not domain_allowed(host_of(body.website), ["poojaloka.com"])):
+        b.catalogue_source = {}
+        old_products = ctx.db.execute(select(Product).where(Product.brand_id == b.id)).scalars().all()
+        for product in old_products:
+            if product.source_url and domain_allowed(host_of(product.source_url), ["poojaloka.com"]):
+                product.is_active = False
     data = body.model_dump()
     for k in ("approved_claims", "restricted_claims", "prohibited_messaging", "content_pillars", "languages",
               "marketing_objectives", "fonts"):
@@ -271,6 +282,12 @@ def sync_catalogue(body: SyncIn, ctx: Ctx = Depends(get_ctx)):
     if src_cfg.get("kind") != "poojaloka_store_api":
         raise ApiError(400, "No catalogue connector is set for this brand. Add products manually or by CSV.",
                        "no_connector")
+    if not domain_allowed(host_of(b.website or ""), ["poojaloka.com"]):
+        raise ApiError(
+            400,
+            "The Poojaloka catalogue can only sync to a Poojaloka website.",
+            "catalogue_domain_mismatch",
+        )
     source = catalogue_mod.get_source(b)
     if source is None:
         from ...catalogue.poojaloka import SnapshotSource

@@ -25,12 +25,22 @@ function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | 
     const r = await scan.run(() => api.post<{ draft: WebsiteDraft; warnings: string[] }>("/api/onboarding/scan-website", { website }));
     if (r) { setDraft(r.draft); setWarnings(r.warnings); }
   };
+  const continueManually = () => {
+    const normalized = website.trim().startsWith("http") ? website.trim() : `https://${website.trim()}`;
+    let host = "";
+    try { host = new URL(normalized).hostname.replace(/^www\./, ""); } catch { /* show validation below */ }
+    if (!host) { scan.setError("Enter a valid website URL first."); return; }
+    setDraft({ name: host.split(".")[0].replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      website: normalized, description: "", positioning: "", content_pillars: [], profile_sources: [],
+      pages_scanned: [], text_preview: "", needs_user_confirmation: ["description", "audience", "voice", "goals", "claims"] });
+  };
   const confirm = async () => {
     if (!draft) return;
     const existing = editable(brand);
     const r = await save.run(() => api.put("/api/brand", { ...existing,
-      name: draft.name.trim(), website: draft.website, description: draft.description,
-      positioning: draft.positioning, content_pillars: draft.content_pillars,
+      name: draft.name.trim(), website: draft.website, description: draft.description || existing.description,
+      positioning: draft.positioning || existing.positioning,
+      content_pillars: draft.content_pillars.length ? draft.content_pillars : existing.content_pillars,
       profile_sources: [...(brand?.profile_sources || []), ...draft.profile_sources],
       permitted_sources: [...new Set([...existing.permitted_sources, new URL(draft.website).hostname])],
     }));
@@ -39,7 +49,14 @@ function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | 
   return <Card title="Set up your brand from its website" subtitle="We read a few public pages and prepare a draft. Review it before agents use it; no website password is needed.">
     <div className="flex flex-col gap-2 sm:flex-row"><Input aria-label="Business website" type="url" placeholder="https://yourbusiness.com" value={website} onChange={(e) => setWebsite(e.target.value)} />
       <Button variant="primary" busy={scan.busy} onClick={runScan} disabled={!website.trim()}>Scan website</Button></div>
-    {scan.error && <div className="mt-3"><Alert tone="bad">{scan.error}</Alert></div>}
+    {brand?.catalogue_source?.kind === "poojaloka_store_api" && website.trim() && (() => {
+      try {
+        const host = new URL(website.trim().startsWith("http") ? website.trim() : `https://${website.trim()}`).hostname.toLowerCase().replace(/^www\./, "");
+        if (host === "poojaloka.com" || host.endsWith(".poojaloka.com")) return null;
+        return <p className="mt-2 text-xs text-muted">Confirming this website will disconnect the Poojaloka catalogue and archive its imported products.</p>;
+      } catch { return null; }
+    })()}
+    {scan.error && <div className="mt-3 flex flex-wrap items-center gap-2"><Alert tone="bad">{scan.error}</Alert><Button size="sm" onClick={continueManually}>Continue setup manually</Button></div>}
     {warnings.length > 0 && <div className="mt-3"><Alert tone="info" title="Some pages were skipped">{warnings.join(" ")}</Alert></div>}
     {draft && <div className="mt-4 space-y-3 rounded-xl border border-line p-4">
       <div className="flex flex-wrap items-center justify-between gap-2"><strong>Review the website draft</strong><Badge tone="warn">Confirm before use</Badge></div>
@@ -51,7 +68,7 @@ function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | 
       {draft.text_preview && <details className="text-xs text-muted"><summary className="cursor-pointer">Preview extracted page text</summary><p className="mt-2 whitespace-pre-wrap">{draft.text_preview}</p></details>}
       <p className="text-xs text-muted">Please complete audience, brand voice, goals, approved claims, and connect social channels after saving.</p>
       {save.error && <Alert tone="bad">{save.error}</Alert>}
-      <Button variant="primary" busy={save.busy} onClick={confirm} disabled={!draft.name.trim()}>Confirm and create brand profile</Button>
+      <Button variant="primary" busy={save.busy} onClick={confirm} disabled={!draft.name.trim()}>{brand ? "Confirm website and save" : "Confirm and create brand profile"}</Button>
     </div>}
   </Card>;
 }
@@ -314,6 +331,14 @@ function CatalogueStatus({ brand, products, onChange }: { brand: Brand; products
   const act = useAction();
   const [msg, setMsg] = useState<string | null>(null);
   const src = brand.catalogue_source || {};
+  const sourceMatchesBrand = src.kind !== "poojaloka_store_api" || (() => {
+    try {
+      const host = new URL(brand.website).hostname.toLowerCase().replace(/^www\./, "");
+      return host === "poojaloka.com" || host.endsWith(".poojaloka.com");
+    } catch {
+      return false;
+    }
+  })();
   const fresh = products.reduce<Record<string, number>>((m, p) => ({ ...m, [p.freshness?.state || "manual"]: (m[p.freshness?.state || "manual"] || 0) + 1 }), {});
   const flagged = products.filter((p) => p.data_quality?.some((q) => ["price_suspicious", "possible_test_listing", "stock_negative"].includes(q.code))).length;
   const photos = products.filter((p) => p.image_kind === "product_photo" || p.image_asset_id).length;
@@ -321,7 +346,7 @@ function CatalogueStatus({ brand, products, onChange }: { brand: Brand; products
     const r = await act.run(() => api.post<{ created: number; updated: number; unchanged: number; note: string; snapshot: boolean }>("/api/catalogue/sync", {}));
     if (r) { setMsg(`${r.created} new, ${r.updated} updated, ${r.unchanged} unchanged.${r.note ? ` ${r.note}` : ""}`); onChange(); }
   };
-  if (!src.kind) return null;
+  if (!src.kind || !sourceMatchesBrand) return null;
   return (
     <Card className="mb-4" title="Catalogue source" subtitle={src.label} actions={can.own && <Button size="sm" busy={act.busy} onClick={sync}>{src.snapshot ? "Reload / sync" : "Sync now"}</Button>}>
       <div className="flex flex-wrap gap-2 text-xs">
