@@ -116,7 +116,22 @@ def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
                 if link not in seen and link not in candidates:
                     candidates.append(link)
     if not pages:
-        raise ApiError(422, errors[0] if errors else "No readable public pages were found.", "scan_failed")
+        # A rate-limited site should not block onboarding. Return a deliberately sparse,
+        # editable draft so the user can complete the profile manually or retry later.
+        # Do not infer business details from a hostname.
+        rate_limited = any("HTTP 429" in error for error in errors)
+        if not rate_limited:
+            raise ApiError(422, errors[0] if errors else "No readable public pages were found.", "scan_failed")
+        fallback_name = host.removeprefix("www.").split(".")[0].replace("-", " ").title()
+        warning = (
+            f"{host} rate-limited the scan (HTTP 429). No page content was read. "
+            "Retry later or complete this draft manually; no business details were inferred."
+        )
+        return {"draft": {"name": fallback_name, "website": url, "description": "", "positioning": "",
+                           "content_pillars": [], "profile_sources": [], "pages_scanned": [], "text_preview": "",
+                           "needs_user_confirmation": ["description", "positioning", "audience", "voice", "goals",
+                                                        "claims", "social accounts"]},
+                "warnings": [warning]}
     home = pages[0]
     title = home.title.split(" | ")[0].split(" — ")[0].split(" - ")[0].strip()
     name = title[:120] or host.removeprefix("www.").split(".")[0].replace("-", " ").title()
