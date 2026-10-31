@@ -47,6 +47,15 @@ def _llm_cards(s) -> list[dict]:
             return ConnectionStatus.DEMO
         return "configured" if configured else ConnectionStatus.NOT_CONFIGURED
     return [
+        {"key": "groq", "group": "ai", "name": "Groq (LLM)", "status": status(bool(s.groq_api_key)),
+         "active": active == "groq", "detail": "Demo planner and generator (no LLM calls)" if s.is_demo else
+         (f"Model {s.groq_model}, {s.groq_tier} tier, "
+          + ("rules-led plan" if s.uses_rules_planner and active == "groq" else "model-led plan")
+          + (" — active" if active == "groq" else " — configured, not active")
+          if s.groq_api_key else "Set GROQ_API_KEY in .env (console.groq.com). The free tier allows about 8,000 "
+          "tokens a minute, so runs use the rules-led plan."), "env": ["GROQ_API_KEY", "GROQ_MODEL", "GROQ_TIER",
+                                                                      "LLM_PROVIDER"],
+         "testable": s.is_live and bool(s.groq_api_key), "maturity": "implemented, tested with a mocked API"},
         {"key": "gemini", "group": "ai", "name": "Google Gemini (LLM)", "status": status(bool(s.gemini_api_key)),
          "active": active == "gemini", "detail": "Demo planner and generator (no LLM calls)" if s.is_demo else
          (f"Model {s.gemini_model}, thinking {s.gemini_thinking_level}" + (" — active" if active == "gemini" else
@@ -128,6 +137,13 @@ def test_integration(key: str, ctx: Ctx = Depends(get_ctx)):
     if s.is_demo:
         raise ApiError(400, "Demo mode makes no external calls.", "demo")
     rate_limit(f"test:{ctx.workspace.id}:{key}", 10, 3600)
+    if key == "groq":
+        from ...llm.groq_llm import check_key as check_groq
+
+        if not s.groq_api_key:
+            return {"ok": False, "message": "GROQ_API_KEY isn't set."}
+        ok, msg = check_groq(s.groq_api_key, s.groq_model)
+        return {"ok": ok, "message": msg}
     if key == "gemini":
         from ...llm.gemini_llm import check_key
 

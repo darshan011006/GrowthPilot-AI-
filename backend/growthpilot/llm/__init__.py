@@ -1,7 +1,7 @@
 """LLM provider interface.
 
-Two providers are implemented behind one interface: Google Gemini (Interactions API) and Anthropic Claude
-(Messages API). Demo mode uses no LLM at all. Every call goes through ``usage.preflight`` (budget check) and
+Three providers are implemented behind one interface: Groq (OpenAI-compatible Chat Completions), Google Gemini
+(Interactions API) and Anthropic Claude (Messages API). Demo mode uses no LLM at all. Every call goes through ``usage.preflight`` (budget check) and
 ``usage.record`` (cost estimate), so the orchestrator never needs provider-specific code.
 
 The conversation format used by the agent planner is provider-neutral and Anthropic-shaped:
@@ -62,6 +62,11 @@ def get_llm() -> LLM | None:
     if s.is_demo:
         return None
     provider = s.active_llm_provider
+    if provider == "groq":
+        from .groq_llm import GroqLLM
+
+        return GroqLLM(api_key=s.groq_api_key, model=s.groq_model, reasoning_effort=s.groq_reasoning_effort,
+                       free_tier=s.groq_tier == "free")
     if provider == "gemini":
         from .gemini_llm import GeminiLLM
 
@@ -70,7 +75,8 @@ def get_llm() -> LLM | None:
         from .anthropic_llm import AnthropicLLM
 
         return AnthropicLLM(api_key=s.llm_key, model=s.llm_model, effort=s.llm_effort)
-    raise LLMUnavailable("No LLM configured. Set GEMINI_API_KEY (or LLM_API_KEY for Anthropic) in .env and restart.")
+    raise LLMUnavailable("No LLM configured. Set GROQ_API_KEY (or GEMINI_API_KEY, or LLM_API_KEY for Anthropic) in "
+                         ".env and restart.")
 
 
 def strip_provider_fields(messages: list[dict]) -> list[dict]:

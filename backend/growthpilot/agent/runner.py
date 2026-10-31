@@ -39,6 +39,8 @@ from .registry import ROLE_LABELS, Role, ToolBlocked, ToolContext, ToolError, To
 
 log = logging.getLogger(__name__)
 
+RULES_PREFIX = "rules:"  # live run on the fixed step plan; the rest of the name is the LLM writing the text
+
 MAX_RETRIES = 2
 PLANNER_RETRY_WAITS = (10, 20, 40, 60)  # seconds; long enough for per-minute rate limits to reset
 PLANNER_RETRIES = len(PLANNER_RETRY_WAITS)
@@ -93,7 +95,8 @@ def create_run(db: Session, *, workspace_id: int, user_id: int | None, goal: str
                               .limit(1)).scalar_one_or_none()
     if s.is_live:
         llm = get_llm()  # raises LLMUnavailable with a clear message
-        planner = llm.name
+        # Rules-led: the fixed step plan, with the LLM writing the text (fits Groq's free-tier token limits).
+        planner = (RULES_PREFIX + llm.name if s.uses_rules_planner else llm.name)[:40]
     else:
         planner = DemoPlanner.name
     intent, params = parse_goal(goal)
@@ -119,7 +122,7 @@ class Runner:
             role = m.role if m else "viewer"
         self.ctx = ToolContext(db=db, run=run, workspace_id=run.workspace_id, brand_id=run.brand_id,
                                settings=get_settings(), user_role=role)
-        if run.planner == DemoPlanner.name:
+        if run.planner == DemoPlanner.name or run.planner.startswith(RULES_PREFIX):
             self.planner = DemoPlanner()
         else:
             llm = get_llm()

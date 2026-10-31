@@ -32,6 +32,9 @@ TOKEN_PRICES: dict[str, tuple[float, float]] = {
     "gemini-3.1-flash-lite": (0.25, 1.50),
     "gemini-4-argon": (2.00, 10.00),
     "gemini-3.1-pro-preview": (2.00, 12.00),
+    # Groq on-demand (Developer tier) prices; the free tier records $0. See docs/API_INTEGRATIONS.md.
+    "openai/gpt-oss-120b": (0.15, 0.60),
+    "openai/gpt-oss-20b": (0.075, 0.30),
 }
 # USD per unit
 UNIT_PRICES: dict[str, float] = {
