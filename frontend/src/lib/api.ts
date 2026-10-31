@@ -34,7 +34,8 @@ async function request<T>(method: string, path: string, body?: unknown, opts: { 
   try {
     res = await fetch(path, { method, headers, body: payload, credentials: "same-origin", cache: "no-store" });
   } catch {
-    throw new ApiError(0, "network", "Can't reach the GrowthPilot API. Is the backend running?");
+    throw new ApiError(0, "network", "Can't reach the GrowthPilot API. Start the full app with `make start` "
+      + "(it runs the backend too), then try again.");
   }
   const text = await res.text();
   let data: unknown = null;
@@ -46,6 +47,11 @@ async function request<T>(method: string, path: string, body?: unknown, opts: { 
     }
   }
   if (!res.ok) {
+    if (res.status >= 500 && (data === null || typeof data === "string")) {
+      // A non-JSON 5xx comes from the web server's /api proxy: the backend isn't running or reachable.
+      throw new ApiError(0, "network", "Can't reach the GrowthPilot API. Start the full app with `make start` "
+        + "(it runs the backend too), then try again.");
+    }
     const d = (data && typeof data === "object" ? data : {}) as { error?: string; message?: string };
     if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/api/auth")) {
       window.dispatchEvent(new Event("gp:unauthenticated")); // AuthProvider refreshes; the shell redirects

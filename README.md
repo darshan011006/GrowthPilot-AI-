@@ -21,16 +21,32 @@ competitors, fixture trend notes, synthetic metrics and simulated publishing.
 
 ## Quick start (demo, ~5 minutes)
 
-Requirements: macOS/Linux, Python 3.11+, Node.js 24 (`brew install node@24`), make.
+Requirements: macOS/Linux (on Windows, use WSL), Python 3.11+, Node.js 20.9+ (24 recommended), make.
 
 ```bash
-make setup     # Python venv + backend deps (incl. Pillow), npm ci for the frontend
-make demo      # demo login + the Poojaloka demo (login saved to data/demo-login.txt)
-make dev       # API on :8000 and web app on :3000 (the background worker runs inside the API)
+git clone https://github.com/darshan011006/GrowthPilot-AI-.git && cd GrowthPilot-AI-
+make start
 ```
 
-Open http://localhost:3000, sign in with the credentials in `data/demo-login.txt`, then follow
-[docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md). No `.env` is needed for demo mode.
+`make start` does everything a fresh clone needs, and only what's still missing:
+- installs the backend and frontend dependencies
+- creates `.env` with fresh secret keys (demo mode)
+- sets up the database
+- creates a demo login and loads the Poojaloka demo
+- runs the API (:8000) and the web app (:3000)
+
+Open http://localhost:3000 and sign in with the email and password in `data/demo-login.txt`, or create an account
+at `/register`. Then follow [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
+
+### Working as a team
+- **Each machine runs its own backend and database.** Accounts, brands and posts live in that machine's `data/`
+  folder, which is never committed. A teammate's login doesn't exist on your machine; use your own demo login or
+  register.
+- **The web app needs the backend running.** It only proxies `/api` to it. If you start just the frontend (for
+  example `npm run dev`), sign-in fails with "Can't reach the GrowthPilot API". Use `make start`.
+- **API keys are per machine** (in `.env`). Demo mode needs none. Never commit `.env`.
+- **For one shared workspace** that everyone logs into, the backend must be hosted somewhere reachable; see
+  [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Commands
 
@@ -125,5 +141,6 @@ Docs: [Architecture](docs/ARCHITECTURE.md) · [Integrations](docs/API_INTEGRATIO
 | Catalogue sync says "snapshot reloaded" | Demo mode makes no external calls; use live mode or `DEMO_ALLOW_CATALOGUE_SYNC=true` |
 | Poster shows a "glyphs" failure | On-image text must be English (no complex-script shaping); captions can use Kannada |
 | Instagram/Facebook publish fails "public HTTPS URL" | Set `BASE_URL` to a public HTTPS address so Meta can fetch images |
-| Port already in use | `API_PORT=8001 WEB_PORT=3001 make dev` |
+| Port already in use | `API_PORT=8001 WEB_PORT=3001 make start` |
+| Sign-in says "Can't reach the GrowthPilot API" | The backend isn't running; stop the frontend and run `make start` |
 | Forgot the demo password | Delete `data/demo.db` and `data/demo-login.txt`, then `make demo` |
