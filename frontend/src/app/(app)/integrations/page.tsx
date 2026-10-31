@@ -40,6 +40,13 @@ interface IntegrationsData {
   redirect_uris: Record<string, string>;
   connections: Connection[];
   config_problems: { key: string; impact: string }[];
+  canva: { status: string; redirect_uri: string; last_verified_at?: string | null };
+}
+
+interface CanvaStatus {
+  status: "misconfigured" | "disconnected" | "connected" | "error";
+  message?: string;
+  tools?: string[];
 }
 
 const MATURITY: Record<string, [string, "ok" | "warn" | "neutral" | "info"]> = {
@@ -119,15 +126,39 @@ function IntegrationsInner() {
   const [test, setTest] = useState<Record<string, { ok: boolean; message: string }>>({});
   const [hook, setHook] = useState<{ name: string; url: string } | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
+  const [canvaStatus, setCanvaStatus] = useState<CanvaStatus | null>(null);
 
   if (loading && !data) return <Loading />;
   if (error) return <Alert tone="bad">{error}</Alert>;
   if (!data) return null;
-  const oauthMsg = params.get("instagram") || params.get("facebook");
+  const oauthMsg = params.get("instagram") || params.get("facebook") || params.get("canva");
+  const effectiveCanvaStatus = canvaStatus?.status ??
+    (params.get("canva") === "connected" ? "connected" : data.canva.status);
+  const canvaStatusLabel: Record<string, string> = {
+    misconfigured: "Misconfigured",
+    disconnected: "Disconnected",
+    connected: "Connected & verified",
+    error: "Verification failed",
+  };
+  const canvaStatusTone = effectiveCanvaStatus === "connected" ? "ok"
+    : effectiveCanvaStatus === "error" ? "bad"
+      : effectiveCanvaStatus === "misconfigured" ? "warn" : "neutral";
 
   const connect = async (key: string) => {
     const r = await act.run(() => api.post<{ authorize_url: string }>(`/api/integrations/${key}/start`));
     if (r) window.location.href = r.authorize_url;
+  };
+  const connectCanva = async () => {
+    const r = await act.run(() => api.get<{ authorize_url: string }>("/api/integrations/canva/connect"));
+    if (r) window.location.assign(r.authorize_url);
+  };
+  const checkCanva = async () => {
+    const r = await act.run(() => api.get<CanvaStatus>("/api/integrations/canva/status"));
+    if (r) setCanvaStatus(r);
+  };
+  const disconnectCanva = async () => {
+    const r = await act.run(() => api.post<{ status: string }>("/api/integrations/canva/disconnect"));
+    if (r) setCanvaStatus({ status: "disconnected", message: "Canva was disconnected for this workspace." });
   };
   const runTest = async (key: string) => {
     const r = await act.run(() => api.post<{ ok: boolean; message: string }>(`/api/integrations/${key}/test`));
@@ -148,6 +179,22 @@ function IntegrationsInner() {
           <ul className="mt-1 list-disc pl-5">{data.config_problems.map((p) => <li key={p.key}><code>{p.key}</code>: {p.impact}</li>)}</ul>
         </Alert></div>
       )}
+
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Creative tools</h2>
+      <div className="mb-6 grid gap-4 md:grid-cols-2">
+        <Card title={<span className="flex flex-wrap items-center gap-2">Canva MCP<Badge tone={canvaStatusTone}>{canvaStatusLabel[effectiveCanvaStatus] ?? effectiveCanvaStatus}</Badge></span>}>
+          <p className="text-sm text-muted">Canva is reported connected only after GrowthPilot authenticates and verifies the available MCP tools. This connection does not publish social content.</p>
+          {data.canva.last_verified_at && <p className="mt-1 text-xs text-muted">Last authenticated check: {data.canva.last_verified_at}</p>}
+          <p className="mt-2 text-xs text-muted">Register this exact callback URI in Canva: <code className="break-all">{data.canva.redirect_uri || "Set CANVA_REDIRECT_URI"}</code></p>
+          {canvaStatus?.message && <div className="mt-2"><Alert tone={canvaStatus.status === "connected" ? "ok" : "warn"}>{canvaStatus.message}</Alert></div>}
+          {canvaStatus?.tools && <p className="mt-2 text-xs text-muted">Verified tools: {canvaStatus.tools.join(", ")}</p>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {can.own && <Button size="sm" variant="primary" busy={act.busy} onClick={connectCanva}>{effectiveCanvaStatus === "connected" ? "Reconnect Canva" : "Connect Canva"}</Button>}
+            <Button size="sm" busy={act.busy} onClick={checkCanva}>Check connection</Button>
+            {can.own && <Button size="sm" variant="danger" busy={act.busy} onClick={disconnectCanva}>Disconnect</Button>}
+          </div>
+        </Card>
+      </div>
 
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">AI & research</h2>
       <div className="mb-6 grid gap-4 md:grid-cols-2">

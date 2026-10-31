@@ -219,6 +219,21 @@ class OAuthState(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class ProviderCredential(Base):
+    """Workspace-scoped provider credentials, encrypted as a single Fernet payload."""
+    __tablename__ = "provider_credentials"
+    __table_args__ = (UniqueConstraint("workspace_id", "provider", name="uq_provider_credentials_workspace_provider"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(40))
+    credentials_enc: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="authorized", server_default="authorized")
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -647,6 +662,19 @@ class ContentRevision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     content: Mapped[ContentItem] = relationship(back_populates="revisions")
+
+
+class CanvaPosterJob(Base):
+    """One idempotent Canva poster job per content item, matching migration a81d0a6f4a21."""
+    __tablename__ = "canva_poster_jobs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    content_id: Mapped[int] = mapped_column(ForeignKey("content_items.id", ondelete="CASCADE"), unique=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
+    calls_used: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 class PublishAttempt(Base):
