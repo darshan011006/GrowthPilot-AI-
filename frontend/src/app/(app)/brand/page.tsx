@@ -416,6 +416,14 @@ function CatalogueStatus({ brand, products, onChange }: { brand: Brand; products
   const act = useAction();
   const [msg, setMsg] = useState<string | null>(null);
   const src = brand.catalogue_source || {};
+  const sourceMatchesBrand = src.kind !== "poojaloka_store_api" || (() => {
+    try {
+      const host = new URL(brand.website).hostname.toLowerCase().replace(/^www\./, "");
+      return host === "poojaloka.com" || host.endsWith(".poojaloka.com");
+    } catch {
+      return false;
+    }
+  })();
   const fresh = products.reduce<Record<string, number>>((m, p) => ({ ...m, [p.freshness?.state || "manual"]: (m[p.freshness?.state || "manual"] || 0) + 1 }), {});
   const flagged = products.filter((p) => p.data_quality?.some((q) => ["price_suspicious", "possible_test_listing", "stock_negative"].includes(q.code))).length;
   const photos = products.filter((p) => p.image_kind === "product_photo" || p.image_asset_id).length;
@@ -423,7 +431,7 @@ function CatalogueStatus({ brand, products, onChange }: { brand: Brand; products
     const r = await act.run(() => api.post<{ created: number; updated: number; unchanged: number; note: string; snapshot: boolean }>("/api/catalogue/sync", {}));
     if (r) { setMsg(`${r.created} new, ${r.updated} updated, ${r.unchanged} unchanged.${r.note ? ` ${r.note}` : ""}`); onChange(); }
   };
-  if (!src.kind) return null;
+  if (!src.kind || !sourceMatchesBrand) return null;
   return (
     <Card className="mb-4" title="Catalogue source" subtitle={src.label} actions={can.own && <Button size="sm" busy={act.busy} onClick={sync}>{src.snapshot ? "Reload / sync" : "Sync now"}</Button>}>
       <div className="flex flex-wrap gap-2 text-xs">
