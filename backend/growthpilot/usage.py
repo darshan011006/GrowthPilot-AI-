@@ -79,6 +79,8 @@ class UsageScope:
     cost_usd: float = 0.0  # spent inside this scope (one tool call)
     tokens: int = 0
     records: list[int] = field(default_factory=list)
+    # Copies of this scope's records, so a rollback of a failed attempt can't erase usage that was really spent.
+    kept: list[dict] = field(default_factory=list)
 
 
 _scope: contextvars.ContextVar[UsageScope | None] = contextvars.ContextVar("usage_scope", default=None)
@@ -170,17 +172,33 @@ def record(*, provider: str, operation: str, model: str = "", input_tokens: int 
     session = sc.db if sc else db
     if session is None:
         return cost_usd
-    rec = UsageRecord(workspace_id=sc.workspace_id if sc else workspace_id, run_id=sc.run_id if sc else None,
-                      campaign_id=sc.campaign_id if sc else None, provider=provider, operation=operation[:60],
-                      model=model[:80], input_tokens=input_tokens, output_tokens=output_tokens, units=units,
-                      cost_usd=cost_usd, cached=cached)
+    fields = dict(workspace_id=sc.workspace_id if sc else workspace_id, run_id=sc.run_id if sc else None,
+                  campaign_id=sc.campaign_id if sc else None, provider=provider, operation=operation[:60],
+                  model=model[:80], input_tokens=input_tokens, output_tokens=output_tokens, units=units,
+                  cost_usd=cost_usd, cached=cached)
+    rec = UsageRecord(**fields)
     session.add(rec)
     session.flush()
     if sc:
         sc.cost_usd += cost_usd
         sc.tokens += input_tokens + output_tokens
         sc.records.append(rec.id)
+        sc.kept.append(fields | {"id": rec.id} | ({"created_at": rec.created_at} if rec.created_at else {}))
     return cost_usd
+
+
+def restore(sc: UsageScope) -> int:
+    """After a rollback: write back the scope's usage records the rollback removed. Returns how many."""
+    from .models import UsageRecord
+
+    restored = 0
+    for fields in sc.kept:
+        if sc.db.get(UsageRecord, fields["id"]) is None:  # committed records survive a rollback; don't duplicate
+            sc.db.add(UsageRecord(**fields))
+            restored += 1
+    if restored:
+        sc.db.flush()
+    return restored
 
 
 def estimate_llm_call(model: str, prompt_chars: int, max_output_tokens: int = 4000) -> float:

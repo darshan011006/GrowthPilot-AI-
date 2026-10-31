@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from growthpilot import config, usage
 from growthpilot.agent import generation
+from growthpilot.agent import runner as runner_mod
 from growthpilot.agent.planner_demo import DemoPlanner
 from growthpilot.agent.runner import Runner, create_run, execute_run
 from growthpilot.db import session_scope
@@ -386,3 +387,48 @@ def test_full_live_campaign_run_on_groq_rules_plan(monkeypatch, tmp_path):
     print(f"groq rules-led run: {len(requests)} requests, ~{sum(len(json.dumps(b)) // 4 for b in requests)} prompt "
           f"tokens, largest request ~{biggest} tokens incl. output cap")
     assert biggest < 8000
+
+
+# ── usage spent on failed attempts survives the rollback ────────────────
+
+def _runs_requests(monkeypatch, tmp_path, answer, **env):
+    _live(monkeypatch, tmp_path, **env)
+    with session_scope() as db:
+        ws = db.execute(select(Workspace)).scalars().first()
+        fixtures.seed(db, ws.id, 1, "aranya")
+    requests: list[dict] = []
+
+    def handler(req: httpx.Request):
+        if req.url.host != "api.groq.com":
+            return httpx.Response(404)
+        requests.append(json.loads(req.content))
+        return httpx.Response(200, json=answer())
+
+    net.set_transport(httpx.MockTransport(handler))
+    with session_scope() as db:
+        rid = create_run(db, workspace_id=ws.id, user_id=1, goal="Plan a week of Instagram posts").id
+    with session_scope() as db:
+        execute_run(db, db.get(AgentRun, rid))
+    with session_scope() as db:
+        run = db.get(AgentRun, rid)
+        recs = db.execute(select(UsageRecord).where(UsageRecord.run_id == rid)).scalars().all()
+        return run.status, run.tokens_used, recs, requests
+
+
+def test_tool_attempts_that_fail_validation_keep_their_usage(monkeypatch, tmp_path):
+    # Every structured answer is valid JSON but the wrong shape, so each generation attempt is rolled back.
+    status, tokens, recs, requests = _runs_requests(
+        monkeypatch, tmp_path, lambda: _completion('{"unexpected": true}', prompt=300, completion=50))
+    assert requests and len(recs) == len(requests)
+    assert all(r.provider == "groq" and r.input_tokens == 300 for r in recs)
+    assert tokens >= sum(r.input_tokens + r.output_tokens for r in recs)
+
+
+def test_planner_turns_that_fail_keep_their_usage(monkeypatch, tmp_path):
+    bad_turn = lambda: _completion(None, finish="tool_calls", prompt=200, completion=10,  # noqa: E731
+                                   tool_calls=[{"id": "c", "type": "function",
+                                                "function": {"name": "inspect_brand", "arguments": "[]"}}])
+    status, tokens, recs, requests = _runs_requests(monkeypatch, tmp_path, bad_turn, AGENT_PLANNER="model")
+    assert status == "failed"
+    assert len(requests) == len(recs) == 1 + len(runner_mod.PLANNER_RETRY_WAITS)
+    assert tokens == sum(r.input_tokens + r.output_tokens for r in recs) == 210 * len(recs)
