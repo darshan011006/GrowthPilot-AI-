@@ -111,13 +111,18 @@ class Settings(BaseSettings):
     demo_allow_catalogue_sync: bool = False
     catalogue_fresh_hours: int = Field(default=24, ge=1, le=24 * 30)
 
-    # Instagram API with Instagram Login (Meta)
+    # Instagram API with Instagram Login (separate Instagram product credentials)
+    instagram_app_id: str = ""
+    instagram_app_secret: str = ""
+    # Meta Unified Login for newer Instagram API apps, and Facebook Pages.
     meta_app_id: str = ""
     meta_app_secret: str = ""
-    meta_redirect_uri: str = ""  # defaults to {BASE_URL}/api/integrations/instagram/callback
+    meta_login_config_id: str = ""
+    meta_redirect_uri: str = ""
     instagram_api_version: str = "v26.0"
-    # Facebook Pages (Facebook Login for Business; same Meta app)
-    facebook_redirect_uri: str = ""  # defaults to {BASE_URL}/api/integrations/facebook/callback
+
+    # Facebook Pages
+    facebook_redirect_uri: str = ""
     facebook_api_version: str = "v26.0"
 
     # Safety switches
@@ -207,7 +212,15 @@ class Settings(BaseSettings):
 
     @property
     def instagram_configured(self) -> bool:
-        return bool(self.meta_app_id and self.meta_app_secret)
+        return self.instagram_login_configured or self.instagram_unified_configured
+
+    @property
+    def instagram_login_configured(self) -> bool:
+        return bool(self.instagram_app_id and self.instagram_app_secret)
+
+    @property
+    def instagram_unified_configured(self) -> bool:
+        return bool(self.meta_app_id and self.meta_app_secret and self.meta_login_config_id)
 
     @property
     def instagram_redirect_uri(self) -> str:
@@ -227,7 +240,12 @@ class Settings(BaseSettings):
             if not self.search_configured:
                 out.append({"key": "BRAVE_SEARCH_API_KEY", "impact": "Web research is unavailable; agent will say so."})
             if not self.instagram_configured:
-                out.append({"key": "META_APP_ID / META_APP_SECRET", "impact": "Instagram can't be connected."})
+                out.append({"key": "INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET or META_APP_ID / "
+                                  "META_APP_SECRET / META_LOGIN_CONFIG_ID",
+                            "impact": "Instagram can't be connected."})
+            if not (self.meta_app_id and self.meta_app_secret):
+                out.append({"key": "META_APP_ID / META_APP_SECRET",
+                            "impact": "Facebook Pages can't be connected."})
             if not self.secure_cookies:
                 out.append({"key": "BASE_URL", "impact": "Not HTTPS: cookies aren't marked Secure and Instagram "
                             "can't fetch images for publishing."})
