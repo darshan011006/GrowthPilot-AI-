@@ -257,7 +257,7 @@ def _meta_product(meta: dict[str, str], page_url: str, images: list[str], headin
 
 
 def _site_profile(raw_blocks: list[str]) -> dict:
-    """Extract factual organization identity/location fields from Schema.org JSON-LD."""
+    """Extract the strongest factual organization identity/location from Schema.org JSON-LD."""
     def nodes(value):
         if isinstance(value, list):
             for item in value:
@@ -266,18 +266,26 @@ def _site_profile(raw_blocks: list[str]) -> dict:
             kinds = value.get("@type", [])
             if isinstance(kinds, str):
                 kinds = [kinds]
-            if any(str(kind).rsplit("/", 1)[-1].lower() in {"organization", "store", "localbusiness", "brand"} for kind in kinds):
+            kind_names = {str(kind).rsplit("/", 1)[-1].lower() for kind in kinds}
+            if kind_names.intersection({"organization", "store", "localbusiness", "brand", "website"}):
                 yield value
-            for key in ("@graph", "publisher", "brand", "author", "mainEntity"):
+            for key in ("@graph", "publisher", "brand", "author", "mainEntity", "about", "parentOrganization"):
                 if key in value:
                     yield from nodes(value[key])
 
+    candidates = []
     for raw in raw_blocks:
         try:
             data = json.loads(raw)
         except (ValueError, TypeError):
             continue
         for item in nodes(data):
+            kinds = item.get("@type", [])
+            if isinstance(kinds, str):
+                kinds = [kinds]
+            kind_names = {str(kind).rsplit("/", 1)[-1].lower() for kind in kinds}
+            # Organization/Store names are more useful than SEO-style page titles.
+            rank = 4 if kind_names.intersection({"organization", "store", "localbusiness"}) else 3 if "brand" in kind_names else 1
             address = item.get("address") or {}
             if isinstance(address, list):
                 address = address[0] if address else {}
@@ -287,8 +295,8 @@ def _site_profile(raw_blocks: list[str]) -> dict:
             profile = {"name": _text_value(item.get("name"))[:120], "description": _text_value(item.get("description"))[:500],
                        "location": location[:160], "slogan": _text_value(item.get("slogan"))[:300]}
             if any(profile.values()):
-                return profile
-    return {}
+                candidates.append((rank + bool(profile["name"]) * 2 + bool(profile["location"]), profile))
+    return max(candidates, key=lambda candidate: candidate[0])[1] if candidates else {}
 
 
 def robots_allows(url: str, cache: dict[str, object] | None = None) -> bool:

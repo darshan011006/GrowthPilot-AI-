@@ -98,6 +98,20 @@ def _scan_link_priority(link: str) -> int:
     return 9
 
 
+def _company_name(*candidates: str, fallback: str) -> str:
+    """Prefer concise company identity over the SEO copy often used as a page title."""
+    seo_terms = re.compile(r"\b(buy|shop|online|destination|leading|discover|best prices|men's fashion|womenswear)\b", re.I)
+    for candidate in candidates:
+        value = " ".join(str(candidate or "").split()).strip(" |–—-·")
+        if not value or len(value) > 80 or seo_terms.search(value) or len(value.split()) > 6:
+            continue
+        # Common page-title pattern: "Company | Tagline".
+        value = re.split(r"\s[|–—·]\s", value, maxsplit=1)[0].strip()
+        if value and len(value.split()) <= 6:
+            return value[:120]
+    return fallback[:120]
+
+
 @router.post("/onboarding/scan-website")
 def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
     """Inspect a small set of public pages on the submitted domain and return a reviewable draft."""
@@ -162,7 +176,7 @@ def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
     suffix_size = 2 if len(host_parts) >= 3 and host_parts[-2] in {"co", "com", "org", "net", "gov", "ac"} else 1
     domain_label = host_parts[-(suffix_size + 1)] if len(host_parts) > suffix_size else host_parts[0]
     domain_name = domain_label.replace("-", " ").replace("_", " ").title()
-    name = (profile.get("name") or home.site_name or domain_name)[:120]
+    name = _company_name(profile.get("name", ""), home.site_name, home.title, fallback=domain_name)
     description = home.description or next((p.description for p in pages if p.description), "") or profile.get("description", "")
     text_chunks = [p.text for p in pages]
     headings = list(dict.fromkeys(h for p in pages for h in p.headings))[:20]
