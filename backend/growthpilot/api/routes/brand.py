@@ -318,10 +318,6 @@ def save_brand(body: BrandIn, ctx: Ctx = Depends(get_ctx)):
     if (old_source.get("kind") == "poojaloka_store_api"
             and not domain_allowed(host_of(body.website), ["poojaloka.com"])):
         b.catalogue_source = {}
-        old_products = ctx.db.execute(select(Product).where(Product.brand_id == b.id)).scalars().all()
-        for product in old_products:
-            if product.source_url and domain_allowed(host_of(product.source_url), ["poojaloka.com"]):
-                product.is_active = False
     data = body.model_dump()
     for k in ("approved_claims", "restricted_claims", "prohibited_messaging", "content_pillars", "languages",
               "marketing_objectives", "fonts"):
@@ -343,6 +339,7 @@ def save_brand(body: BrandIn, ctx: Ctx = Depends(get_ctx)):
     # in sync with the company name shown in Brand Brain.
     ctx.workspace.name = body.name.strip()
     ctx.db.flush()
+    catalogue_mod.archive_foreign_products(ctx.db, b)  # uses the website just saved
     audit.record(ctx.db, "brand.created" if created else "brand.updated", workspace_id=ctx.workspace.id,
                  user_id=ctx.user.id, target_type="brand", target_id=b.id, ip=ctx.ip)
     ctx.db.commit()

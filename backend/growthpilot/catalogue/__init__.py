@@ -265,3 +265,49 @@ def get_source(brand: Brand) -> CatalogueSource | None:
     from .poojaloka import PoojalokaStore
 
     return PoojalokaStore(cfg.get("base_url") or s.poojaloka_api_base)
+
+
+# Store-specific connectors and the sites their rows come from. A row from one of these sites belongs only to a
+# brand whose own website is on that site, even if the row is still marked active (e.g. rows imported before the
+# brand changed its website).
+STORE_DOMAINS: dict[str, list[str]] = {"poojaloka_store_api": ["poojaloka.com"]}
+
+
+def foreign_store_product(brand: Brand, p: Product) -> bool:
+    """True when the product came from another store's connector (e.g. Poojaloka rows for a non-Poojaloka brand)."""
+    if not p.source_url:
+        return False
+    host, site = host_of(p.source_url), host_of(brand.website or "")
+    return any(domain_allowed(host, d) and not domain_allowed(site, d) for d in STORE_DOMAINS.values())
+
+
+def usable_for_brand(brand: Brand, p: Product | None) -> bool:
+    """Whether content for this brand may use the product: active, the brand's own, and not another store's row."""
+    return p is not None and p.brand_id == brand.id and bool(p.is_active) and not foreign_store_product(brand, p)
+
+
+def usable_products(db: Session, brand: Brand, ids: list[int] | None = None) -> list[Product]:
+    """The brand's usable products (all, or the given ids in the given order)."""
+    q = select(Product).where(Product.brand_id == brand.id, Product.is_active.is_(True))
+    if ids is not None:
+        q = q.where(Product.id.in_(ids or [0]))
+    rows = [p for p in db.execute(q.order_by(Product.id)).scalars() if not foreign_store_product(brand, p)]
+    if ids is not None:
+        order = {pid: i for i, pid in enumerate(ids)}
+        rows.sort(key=lambda p: order.get(p.id, len(order)))
+    return rows
+
+
+def archive_foreign_products_everywhere(db: Session) -> int:
+    """Startup clean-up for rows stored before the website guard existed. Returns how many were archived."""
+    return sum(archive_foreign_products(db, b) for b in db.execute(select(Brand)).scalars())
+
+
+def archive_foreign_products(db: Session, brand: Brand) -> int:
+    """Deactivate another store's rows still active on this brand. Returns how many were archived."""
+    n = 0
+    for p in db.execute(select(Product).where(Product.brand_id == brand.id, Product.is_active.is_(True))).scalars():
+        if foreign_store_product(brand, p):
+            p.is_active = False
+            n += 1
+    return n

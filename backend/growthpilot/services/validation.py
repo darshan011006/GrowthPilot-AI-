@@ -413,13 +413,21 @@ def item_assets(db: Session, item: ContentItem) -> list[Asset]:
 
 def validate_item(db: Session, item: ContentItem) -> Report:
     brand = db.get(Brand, item.brand_id)
-    catalogue = list(db.execute(select(Product).where(Product.brand_id == brand.id)).scalars())
+    from ..catalogue import usable_products
+
+    catalogue = usable_products(db, brand)
     referenced = [p for p in catalogue if p.id in (item.product_ids or [])]
+    unavailable = [pid for pid in item.product_ids or [] if pid not in {p.id for p in referenced}]
     comps = list(db.execute(select(Competitor).where(Competitor.brand_id == brand.id)).scalars())
     excerpts = [o.excerpt for o in db.execute(
         select(CompetitorObservation).where(CompetitorObservation.workspace_id == item.workspace_id)).scalars()]
+    claims = check_product_claims(item_text(item), brand, referenced, catalogue)
+    if unavailable:
+        claims.append(Check("listing", "fail", "References product(s) that are archived or come from another "
+                            "store's catalogue; remove them or choose current products.",
+                            evidence=", ".join(f"#{pid}" for pid in unavailable)))
     report = Report(
-        product_claims=check_product_claims(item_text(item), brand, referenced, catalogue),
+        product_claims=claims,
         brand=check_brand(item, brand, [c.name for c in comps], excerpts),
         platform=check_platform(item, item_assets(db, item)),
     )

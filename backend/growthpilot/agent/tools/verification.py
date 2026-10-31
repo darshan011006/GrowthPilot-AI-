@@ -73,10 +73,13 @@ def verify_product_facts(ctx: ToolContext, inp: VerifyIn) -> ToolResult:
 def _verify_catalogue(ctx: ToolContext, inp: VerifyIn) -> ToolResult:
     b = brand(ctx)
     ids = inp.product_ids or ctx.state.get("product_ids", [])
-    prods = [p for p in (ctx.db.get(Product, i) for i in ids) if p is not None and p.brand_id == b.id]
+    found = [p for p in (ctx.db.get(Product, i) for i in ids) if p is not None and p.brand_id == b.id]
+    prods = [p for p in found if catalogue_mod.usable_for_brand(b, p)]
     source = catalogue_mod.get_source(b)
     refreshed = catalogue_mod.refresh(ctx.db, b, prods, source)
-    usable, excluded, rows = [], [], []
+    usable, rows = [], []
+    excluded = [{"id": p.id, "name": p.name, "reason": "archived, or imported from another store's catalogue"}
+                for p in found if p not in prods]
     for p in prods:
         ok, why = promotable(p)
         fr = catalogue_mod.freshness(p)
