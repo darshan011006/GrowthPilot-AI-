@@ -4,9 +4,10 @@ PY := backend/.venv/bin/python
 # Node 24 from Homebrew is keg-only; put it first on PATH if present.
 NODE_ENV_PATH := PATH="/opt/homebrew/opt/node@24/bin:$$PATH"
 
-.PHONY: help setup env demo dev backend frontend worker migrate test test-backend lint build e2e reset-demo clean
+.PHONY: help start setup env demo dev backend frontend worker migrate test test-backend lint build e2e reset-demo clean
 
 help:
+	@echo "make start      One command for a fresh clone: install, configure, demo login, run (start here)"
 	@echo "make setup      Install backend (venv) and frontend (npm) dependencies"
 	@echo "make env        Create .env with fresh secret keys (never overwrites)"
 	@echo "make demo       Create a demo login and load the fictional demo brand"
@@ -16,6 +17,9 @@ help:
 	@echo "make e2e        Browser end-to-end test of the demo flow (needs: make dev running)"
 	@echo "make migrate    Apply database migrations"
 	@echo "make worker     Run the background worker as a separate process"
+
+start:
+	./scripts/start.sh
 
 setup:
 	test -d backend/.venv || python3 -m venv backend/.venv
