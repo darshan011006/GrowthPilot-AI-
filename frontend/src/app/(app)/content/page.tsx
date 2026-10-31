@@ -35,15 +35,15 @@ export default function ContentList() {
 
   return (
     <div>
-      <PageHeader title="Creative Studio" subtitle="Every post the agent or your team produced — one main post per idea plus a version per platform — with real rendered images, version history and verification."
+      <PageHeader title="Content Library" subtitle="Every AI-generated asset in one hub. Review, edit or schedule content from your workspace."
         actions={<>
-          <div role="tablist" className="flex rounded-lg border border-line p-0.5">
-            {(["gallery", "table"] as const).map((v) => <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)} className={cx("rounded-md px-3 py-1 text-sm font-semibold", view === v ? "bg-accent text-accent-ink" : "text-muted")}>{v === "gallery" ? "Gallery" : "Table"}</button>)}
+          <div role="tablist" className="flex rounded-xl border border-line bg-panel p-1">
+            {(["gallery", "table"] as const).map((v) => <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)} className={cx("rounded-lg px-3 py-2 text-sm font-semibold", view === v ? "bg-accent text-accent-ink" : "text-muted")}>{v === "gallery" ? "Gallery" : "Table"}</button>)}
           </div>
           {can.edit && <Button variant="primary" busy={create.busy} onClick={newPost}>New post</Button>}
         </>} />
       {create.error && <div className="mb-3"><Alert tone="bad">{create.error}</Alert></div>}
-      <Card className="mb-4">
+      <Card className="mb-5 rounded-3xl">
         <div className="grid gap-3 md:grid-cols-6">
           <Select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>{STATUSES.map((s) => <option key={s} value={s}>{s ? s.replace(/_/g, " ") : "All statuses"}</option>)}</Select>
           <Select aria-label="Campaign" value={campaign} onChange={(e) => setCampaign(e.target.value)}><option value="">All campaigns</option>{camps.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
@@ -54,7 +54,7 @@ export default function ContentList() {
         </div>
       </Card>
       {loading && !data ? <Loading /> : error ? <Alert tone="bad">{error}</Alert> : !data?.length ? <Empty title="No content matches">Give the agent a campaign goal, or create a post.</Empty> : view === "gallery" ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {data.map((i) => <ContentTile key={i.id} i={i} tz={can.tz} />)}
         </div>
       ) : (
