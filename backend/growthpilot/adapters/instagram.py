@@ -332,7 +332,7 @@ class InstagramAdapter:
             )
 
         issued_at = int(credentials.get("issued_at") or 0)
-        if (credentials.get("login_type") == "instagram_login" and expires_at
+        if (credentials.get("login_type") != "unified_login" and expires_at
                 and expires_at - time.time() < 7 * 86400 and time.time() - issued_at > 86400):
             with client() as http:
                 response = http.get(
@@ -417,6 +417,9 @@ class InstagramAdapter:
             account.get("account_type") or ""
         ).upper()
 
+        if not unified_login and account_type == "PERSONAL":
+            raise AdapterError("Instagram requires a professional account.")
+
         return AccountInfo(
             account_id=account_id,
             label=f"@{username}" if username else "Instagram account",
@@ -478,8 +481,23 @@ class InstagramAdapter:
         for image_url in payload.image_urls:
             if not image_url.startswith("https://"):
                 raise AdapterError(
-                    "Instagram requires a publicly accessible HTTPS image URL."
+                    "Instagram requires a public HTTPS image URL that Meta can access."
                 )
+
+        limit = self._get(
+            ctx,
+            f"{instagram_id}/content_publishing_limit",
+            "publishing limit check",
+            fields="quota_usage,config",
+        )
+        rows = limit.get("data") or [{}]
+        usage = rows[0].get("quota_usage")
+        total = (rows[0].get("config") or {}).get("quota_total")
+        if usage is not None and total is not None and usage >= total:
+            raise AdapterError(
+                f"Instagram's 24-hour publishing limit is used up ({usage}/{total}).",
+                retryable=True,
+            )
 
         if (
             payload.content_type == "carousel"
