@@ -20,9 +20,8 @@ from .base import (
     StatusResult,
 )
 
-
 AUTH_URL = "https://www.instagram.com/oauth/authorize"
-TOKEN_URL = "https://api.instagram.com/oauth/access_token"
+TOKEN_URL = "https://api.instagram.com/oauth/access_token"  # noqa: S105
 GRAPH = "https://graph.instagram.com"
 FACEBOOK_GRAPH = "https://graph.facebook.com"
 DIALOG_URL = "https://www.facebook.com/dialog/oauth"
