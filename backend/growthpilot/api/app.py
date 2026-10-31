@@ -16,6 +16,17 @@ from .deps import ApiError
 log = logging.getLogger("growthpilot")
 
 
+def _archive_foreign_catalogue_rows() -> None:
+    """Deactivate another store's products left active on a brand (e.g. Poojaloka rows after a website change)."""
+    from ..catalogue import archive_foreign_products_everywhere
+    from ..db import session_scope
+
+    with session_scope() as db:
+        n = archive_foreign_products_everywhere(db)
+    if n:
+        log.warning("Archived %d product(s) imported from another store's catalogue.", n)
+
+
 def create_app(settings: Settings | None = None, *, start_worker: bool | None = None,
                run_migrations: bool = True) -> FastAPI:
     settings = settings or get_settings()
@@ -23,6 +34,7 @@ def create_app(settings: Settings | None = None, *, start_worker: bool | None = 
     if run_migrations:
         migrate(engine)
     check_or_stamp_mode(settings)
+    _archive_foreign_catalogue_rows()
     run_worker = settings.run_worker_in_process if start_worker is None else start_worker
 
     @asynccontextmanager

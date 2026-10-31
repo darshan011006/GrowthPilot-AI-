@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 
 from ... import audit, worker
+from ... import catalogue as catalogue_mod
 from ...adapters import available_adapters
 from ...agent.generation import SlotContentOut, get_generator, product_dict
 from ...agent.tools.common import brief_for
@@ -203,7 +204,7 @@ class ContentIn(BaseModel):
     note: str = Field(default="", max_length=1000)
 
 
-def _changes(ctx: Ctx, body: ContentIn) -> dict:
+def _changes(ctx: Ctx, body: ContentIn, current_ids: list[int] | None = None) -> dict:
     data = body.model_dump(exclude_unset=True)
     data.pop("note", None)
     if "planned_at" in data:
@@ -213,8 +214,14 @@ def _changes(ctx: Ctx, body: ContentIn) -> dict:
             ctx.get(Asset, data[key])
     for aid in data.get("slide_asset_ids") or []:
         ctx.get(Asset, aid)
-    for pid in data.get("product_ids") or []:
-        ctx.get(Product, pid)
+    new_ids = [pid for pid in data.get("product_ids") or [] if pid not in (current_ids or [])]
+    if new_ids:
+        b = current_brand(ctx)
+        for pid in new_ids:
+            p = ctx.get(Product, pid)
+            if not catalogue_mod.usable_for_brand(b, p):
+                raise ApiError(400, f"{p.name} is archived or comes from another store's catalogue; choose a "
+                               "current product.", "validation")
     return data
 
 
@@ -250,7 +257,7 @@ def get_content(cid: int, ctx: Ctx = Depends(get_ctx)):
 @router.put("/content/{cid}")
 def edit_content(cid: int, body: ContentIn, ctx: Ctx = Depends(get_ctx)):
     item = ctx.get(ContentItem, cid)
-    changes = _changes(ctx, body)
+    changes = _changes(ctx, body, current_ids=list(item.product_ids or []))
     _guard(lambda: workflow.update(ctx.db, item, changes, user_id=ctx.user.id, role=ctx.role, note=body.note,
                                    ip=ctx.ip))
     ctx.db.commit()
@@ -284,7 +291,7 @@ def regenerate(cid: int, body: RegenIn, ctx: Ctx = Depends(get_ctx)):
     except LLMError as exc:
         raise ApiError(400, str(exc), "llm_unavailable") from exc
     brand = ctx.db.get(Brand, item.brand_id)
-    prods = [product_dict(p) for p in ctx.db.execute(select(Product).where(Product.id.in_(item.product_ids or [0]))).scalars()]
+    prods = [product_dict(p) for p in catalogue_mod.usable_products(ctx.db, brand, list(item.product_ids or []))]
     run = ctx.db.get(AgentRun, item.run_id) if item.run_id else None
     brief = brief_for(ctx.db, brand, workspace_id=ctx.workspace.id, params=(run.state or {}).get("params") if run else None)
     current = {"title": item.title, "hook": item.hook, "caption": item.caption, "hashtags": item.hashtags,
@@ -373,7 +380,7 @@ def add_variants(cid: int, body: VariantsIn, ctx: Ctx = Depends(get_ctx)):
     except LLMError as exc:
         raise ApiError(400, str(exc), "llm_unavailable") from exc
     brand = ctx.db.get(Brand, item.brand_id)
-    prods = [product_dict(p) for p in ctx.db.execute(select(Product).where(Product.id.in_(item.product_ids or [0]))).scalars()]
+    prods = [product_dict(p) for p in catalogue_mod.usable_products(ctx.db, brand, list(item.product_ids or []))]
     brief = brief_for(ctx.db, brand, workspace_id=ctx.workspace.id)
     created = []
     for p in body.platforms:

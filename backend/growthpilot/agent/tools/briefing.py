@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
-from ...catalogue import freshness
+from ...catalogue import freshness, usable_for_brand, usable_products
 from ...models import (
     Asset,
     Campaign,
@@ -220,12 +220,12 @@ def write_briefs(ctx: ToolContext, rows: list[ContentItem], gen, repeat_window: 
 
     # Products: swap out deity/idol products, and give image slots a real photo where the run has one.
     pool_ids = list(ctx.state.get("product_ids", []))
-    pool = {p.id: p for p in ctx.db.execute(select(Product).where(Product.id.in_(pool_ids or [0]),
-                                                                  Product.workspace_id == ctx.workspace_id)).scalars()}
+    pool = {p.id: p for p in usable_products(ctx.db, b, pool_ids)}
     prod_of: dict[int, Product | None] = {}
     for i in rows:
         pid = (i.product_ids or [None])[0]
-        prod_of[i.id] = ctx.db.get(Product, pid) if pid else None
+        p = ctx.db.get(Product, pid) if pid else None
+        prod_of[i.id] = p if usable_for_brand(b, p) else None
     used = {p.id for p in prod_of.values() if p}
     swaps: dict[int, str] = {}
 
@@ -278,7 +278,7 @@ def write_briefs(ctx: ToolContext, rows: list[ContentItem], gen, repeat_window: 
     categories = [c for c, in ctx.db.execute(select(Product.category).where(
         Product.brand_id == b.id, Product.is_active.is_(True)).group_by(Product.category)
         .order_by(func.count(Product.id).desc()).limit(4))]
-    catalogue = list(ctx.db.execute(select(Product).where(Product.brand_id == b.id)).scalars())
+    catalogue = usable_products(ctx.db, b)
     drafts = dict(ctx.state.get("drafts", {}))
     tokens, out_rows, retries, fallbacks = 0, [], 0, 0
     articles = ctx.state.get("articles") or (b.catalogue_source or {}).get("articles") or []
