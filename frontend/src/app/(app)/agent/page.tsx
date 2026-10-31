@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { useAuth, useCan } from "@/components/auth";
 import { RunStatusBadge } from "@/components/domain";
@@ -11,13 +11,14 @@ import { api } from "@/lib/api";
 import { fmtRelative } from "@/lib/format";
 import type { Run } from "@/lib/types";
 
-export default function AgentPage() {
+function AgentWorkspace() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { state } = useAuth();
   const can = useCan();
   const runs = useApi<Run[]>("/api/agent/runs");
   const examples = useApi<string[]>("/api/agent/examples");
-  const [goal, setGoal] = useState("");
+  const [goal, setGoal] = useState(() => searchParams.get("goal") || "");
   const start = useAction();
 
   const submit = async (e: React.FormEvent) => {
@@ -76,4 +77,8 @@ export default function AgentPage() {
       </Card>
     </div>
   );
+}
+
+export default function AgentPage() {
+  return <Suspense fallback={<Loading />}><AgentWorkspace /></Suspense>;
 }
