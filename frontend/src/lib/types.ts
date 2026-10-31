@@ -303,6 +303,17 @@ export interface ContentItem {
   asset_id: number | null;
   slide_asset_ids: number[];
   validation: Validation | null;
+  canva_poster?: {
+    job_id?: number;
+    design_id?: string;
+    asset_id?: number | null;
+    mode?: "image-based" | "text-only";
+    image_trust?: "uploaded" | "none" | string;
+    image_skip_reason?: string | null;
+    edit_link_available?: boolean;
+    error?: string;
+    qa?: { passed: boolean; status: string; issues: string[]; checks?: Record<string, unknown> };
+  } | null;
   validation_current: boolean;
   status: ContentStatus;
   connection_id: number | null;

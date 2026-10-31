@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -12,7 +13,7 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..config import get_settings
+from ..config import AppEnv, get_settings
 from ..db import get_db
 from ..models import Membership, Role, User, UserSession, Workspace, utcnow
 from ..security import constant_time_equals, hash_token, new_token
@@ -96,6 +97,34 @@ def require_json_origin(request: Request) -> None:
     if "application/json" not in request.headers.get("content-type", "") or \
             request.headers.get("x-requested-with") != "GrowthPilot":
         raise ApiError(403, "Request blocked by CSRF protection.", "csrf")
+    origin = request.headers.get("origin")
+    if origin:
+        from urllib.parse import urlsplit
+
+        settings = get_settings()
+
+        def normalized(value: str) -> str | None:
+            parsed = urlsplit(value)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+                return None
+            authority = parsed.hostname.casefold()
+            try:
+                if parsed.port:
+                    authority += f":{parsed.port}"
+            except ValueError:
+                return None
+            return f"{parsed.scheme.casefold()}://{authority}"
+
+        allowed = {normalized(settings.base_url)}
+        if settings.app_env == AppEnv.DEVELOPMENT:
+            allowed.update({"http://localhost:3000", "http://127.0.0.1:3000"})
+            tunnel_host = os.environ.get("GROWTHPILOT_TUNNEL_HOST", "").strip()
+            if tunnel_host and "://" not in tunnel_host and "/" not in tunnel_host:
+                tunnel_origin = normalized(f"https://{tunnel_host}")
+                if tunnel_origin:
+                    allowed.add(tunnel_origin)
+        if normalized(origin) not in allowed:
+            raise ApiError(403, "Request blocked by CSRF protection.", "csrf")
 
 
 def get_ctx(request: Request, db: Session = Depends(get_db)) -> Ctx:

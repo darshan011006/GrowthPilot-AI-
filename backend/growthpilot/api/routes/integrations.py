@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from ... import audit
 from ...adapters import AdapterError, all_adapters, available_adapters, get_adapter, live_adapter_for
@@ -14,10 +14,27 @@ from ...adapters.facebook import FacebookPageAdapter
 from ...adapters.instagram import InstagramAdapter
 from ...adapters.webhook import validate_url
 from ...config import get_settings
-from ...models import ChannelConnection, ConnectionStatus, ContentItem, ContentStatus, OAuthState, utcnow
+from ...creative.canva_mcp import (
+    CanvaMCPError,
+    build_authorization_url,
+    connected_workspace_client,
+    exchange_authorization_code,
+    oauth_metadata,
+    pkce_pair,
+    safe_canva_message,
+)
+from ...models import (
+    ChannelConnection,
+    ConnectionStatus,
+    ContentItem,
+    ContentStatus,
+    OAuthState,
+    ProviderCredential,
+    utcnow,
+)
 from ...platforms import ORDER, SPECS
 from ...research import search as search_mod
-from ...security import encrypt_json, encrypt_str, hash_token, new_token, redact
+from ...security import decrypt_str, encrypt_json, encrypt_str, hash_token, new_token, redact
 from ...services.connections import context
 from .. import serializers as S
 from ..deps import ApiError, Ctx, get_ctx, rate_limit
@@ -115,6 +132,15 @@ def integrations(ctx: Ctx = Depends(get_ctx)):
     s = get_settings()
     conns = _conns(ctx)
     allowed = available_adapters()
+    canva_credential = ctx.db.execute(select(ProviderCredential).where(
+        ProviderCredential.workspace_id == ctx.workspace.id, ProviderCredential.provider == "canva_mcp"
+    )).scalar_one_or_none()
+    canva_configured = (bool(s.canva_client_id and s.canva_client_secret) and
+                        _valid_canva_redirect(s.canva_callback_uri))
+    canva_status = "misconfigured" if not canva_configured else (
+        canva_credential.status if canva_credential and canva_credential.status in {"connected", "error"}
+        else "disconnected"
+    )
     webhook = {"key": "webhook", "group": "other", "name": "Signed webhook (Zapier / Make / n8n)",
                "status": ConnectionStatus.DEMO if s.is_demo else ("connected" if any(
                    c.adapter == "webhook" and c.status == "connected" for c in conns) else "not_configured"),
@@ -123,10 +149,142 @@ def integrations(ctx: Ctx = Depends(get_ctx)):
     redirects = {"instagram": s.instagram_redirect_uri, "facebook": s.facebook_redirect}
     return {"mode": s.app_mode.value, "live_publishing_enabled": s.live_publishing_enabled,
             "ai": _llm_cards(s), "platforms": _platform_cards(ctx, s, conns), "other": [webhook],
+            "canva": {"status": canva_status, "redirect_uri": s.canva_callback_uri,
+                      "last_verified_at": canva_credential.last_verified_at.isoformat()
+                      if canva_credential and canva_credential.last_verified_at else None},
             "redirect_uris": redirects if not s.is_demo else {},
             "connections": [S.connection(c, _adapter_info(c.adapter) if c.adapter in all_adapters() else None)
                             | {"available_in_mode": c.adapter in allowed} for c in conns],
             "config_problems": s.problems()}
+
+
+def _canva_back(status: str, message: str = "") -> RedirectResponse:
+    return RedirectResponse(f"/integrations?canva={status}&message={quote(redact(message)[:250])}", status_code=303)
+
+
+def _valid_canva_redirect(uri: str) -> bool:
+    parsed = urlparse(uri)
+    return parsed.scheme == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password
+
+
+async def _verify_canva(ctx: Ctx) -> dict:
+    settings = get_settings()
+    if not (settings.canva_client_id and settings.canva_client_secret and
+            _valid_canva_redirect(settings.canva_callback_uri)):
+        return {"status": "misconfigured", "message":
+                "Set CANVA_CLIENT_ID, CANVA_CLIENT_SECRET and an HTTPS CANVA_REDIRECT_URI registered in Canva."}
+    row = ctx.db.execute(select(ProviderCredential).where(
+        ProviderCredential.workspace_id == ctx.workspace.id, ProviderCredential.provider == "canva_mcp"
+    )).scalar_one_or_none()
+    if row is None:
+        return {"status": "disconnected", "message": "Connect a Canva account for this workspace."}
+    try:
+        async with connected_workspace_client(ctx.db, ctx.workspace.id, settings) as (client, credential):
+            names = sorted(client.tools)
+            required = {"generate-design", "create-design-from-candidate", "export-design"}
+            missing = sorted(required - set(names))
+            if missing:
+                raise CanvaMCPError("Authenticated Canva MCP is missing required tools: " + ", ".join(missing))
+            credential.status = "connected"
+            credential.last_verified_at = utcnow()
+            credential.last_error = None
+            ctx.db.commit()
+            return {"status": "connected", "tools": names}
+    except Exception as exc:
+        safe = safe_canva_message(str(exc))
+        ctx.db.rollback()
+        row = ctx.db.execute(select(ProviderCredential).where(
+            ProviderCredential.workspace_id == ctx.workspace.id, ProviderCredential.provider == "canva_mcp"
+        )).scalar_one_or_none()
+        if row is None:
+            return {"status": "error", "message": safe[:500] or type(exc).__name__}
+        row.status = "error"
+        row.last_error = safe[:500]
+        ctx.db.commit()
+        return {"status": "error", "message": safe[:500] or type(exc).__name__}
+
+
+@router.get("/integrations/canva/status")
+async def canva_status(ctx: Ctx = Depends(get_ctx)):
+    rate_limit(f"canva-status:{ctx.workspace.id}:{ctx.user.id}", 12, 60)
+    return await _verify_canva(ctx)
+
+
+@router.get("/integrations/canva/connect")
+async def canva_connect(ctx: Ctx = Depends(get_ctx)):
+    ctx.require_owner()
+    settings = get_settings()
+    if not settings.canva_client_id or not settings.canva_client_secret:
+        raise ApiError(400, "Set CANVA_CLIENT_ID and CANVA_CLIENT_SECRET.", "not_configured")
+    redirect_uri = settings.canva_callback_uri
+    if not _valid_canva_redirect(redirect_uri):
+        raise ApiError(400, "CANVA_REDIRECT_URI must be an HTTPS callback URL registered exactly in Canva.",
+                       "invalid_redirect")
+    rate_limit(f"canva-connect:{ctx.workspace.id}:{ctx.user.id}", 5, 3600)
+    verifier, challenge = pkce_pair()
+    state = new_token(32)
+    metadata = await oauth_metadata(settings.canva_mcp_url)
+    ctx.db.add(OAuthState(state_hash=hash_token(state), provider="canva_mcp",
+                          workspace_id=ctx.workspace.id, user_id=ctx.user.id,
+                          code_verifier_enc=encrypt_str(verifier), expires_at=utcnow() + timedelta(minutes=10)))
+    ctx.db.commit()
+    return {"authorize_url": build_authorization_url(metadata, client_id=settings.canva_client_id,
+              redirect_uri=redirect_uri, state=state, challenge=challenge)}
+
+
+@router.get("/integrations/canva/callback")
+async def canva_callback(state: str = "", code: str = "", error: str = "", error_description: str = "",
+                         ctx: Ctx = Depends(get_ctx)):
+    verifier_enc = ctx.db.execute(delete(OAuthState).where(
+        OAuthState.state_hash == hash_token(state or "-"), OAuthState.provider == "canva_mcp",
+        OAuthState.workspace_id == ctx.workspace.id, OAuthState.user_id == ctx.user.id,
+        OAuthState.expires_at > utcnow(),
+    ).returning(OAuthState.code_verifier_enc)).scalar_one_or_none()
+    ctx.db.commit()  # atomic, single-use claim; consume even when exchange is denied or fails
+    if verifier_enc is None:
+        return _canva_back("error", "Authorization state expired or did not match this user and workspace.")
+    verifier = decrypt_str(verifier_enc)
+    if error or not code:
+        return _canva_back("error", "Canva authorization was cancelled or denied.")
+    settings = get_settings()
+    try:
+        metadata = await oauth_metadata(settings.canva_mcp_url)
+        tokens = await exchange_authorization_code(metadata=metadata, client_id=settings.canva_client_id,
+                    client_secret=settings.canva_client_secret, redirect_uri=settings.canva_callback_uri,
+                    code=code, verifier=verifier)
+        credential = ctx.db.execute(select(ProviderCredential).where(
+            ProviderCredential.workspace_id == ctx.workspace.id, ProviderCredential.provider == "canva_mcp"
+        )).scalar_one_or_none()
+        if credential is None:
+            credential = ProviderCredential(workspace_id=ctx.workspace.id, provider="canva_mcp",
+                                             credentials_enc=encrypt_json(tokens), status="authorized")
+            ctx.db.add(credential)
+        else:
+            credential.credentials_enc = encrypt_json(tokens)
+            credential.status, credential.last_error = "authorized", None
+        ctx.db.commit()
+        checked = await _verify_canva(ctx)
+        return _canva_back("connected" if checked["status"] == "connected" else "error",
+                           "Canva connected and MCP tools verified." if checked["status"] == "connected"
+                           else checked.get("message", "MCP verification failed."))
+    except Exception as exc:
+        ctx.db.rollback()
+        return _canva_back("error", safe_canva_message(str(exc)) or type(exc).__name__)
+
+
+@router.post("/integrations/canva/disconnect")
+def canva_disconnect(ctx: Ctx = Depends(get_ctx)):
+    ctx.require_owner()
+    credential = ctx.db.execute(select(ProviderCredential).where(
+        ProviderCredential.workspace_id == ctx.workspace.id, ProviderCredential.provider == "canva_mcp"
+    )).scalar_one_or_none()
+    if credential:
+        ctx.db.delete(credential)
+    for oauth in ctx.db.execute(select(OAuthState).where(OAuthState.workspace_id == ctx.workspace.id,
+                                                         OAuthState.provider == "canva_mcp")).scalars():
+        ctx.db.delete(oauth)
+    ctx.db.commit()
+    return {"status": "disconnected"}
 
 
 @router.post("/integrations/{key}/test")

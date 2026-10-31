@@ -19,6 +19,7 @@ from ...models import (
     Asset,
     Brand,
     Campaign,
+    CanvaPosterJob,
     ChannelConnection,
     ContentItem,
     ContentStatus,
@@ -41,6 +42,80 @@ from .agent import maybe_auto_resume
 from .brand import current_brand
 
 router = APIRouter(prefix="/api", tags=["content"])
+
+
+@router.post("/content/{cid}/canva-poster", status_code=202)
+def enqueue_canva_poster(cid: int, ctx: Ctx = Depends(get_ctx)):
+    """Validate the saved canonical brief and enqueue one private Canva job."""
+    from sqlalchemy.exc import IntegrityError
+
+    from ... import worker
+    from ...creative.canva_mcp import CanvaMCPError
+    from ...services.canva_poster_pipeline import validate_brief_for_item
+
+    ctx.require_editor()
+    rate_limit(f"canva-poster:{ctx.workspace.id}:{ctx.user.id}", 8, 3600)
+    item = ctx.get(ContentItem, cid)
+    brand = ctx.get(Brand, item.brand_id)
+    try:
+        validate_brief_for_item(ctx.db, item, brand)
+    except CanvaMCPError as exc:
+        raise ApiError(400, str(exc), "invalid_brief") from None
+    job = ctx.db.execute(select(CanvaPosterJob).where(CanvaPosterJob.workspace_id == ctx.workspace.id,
+                                                       CanvaPosterJob.content_id == item.id)).scalar_one_or_none()
+    if job and job.status in {"queued", "generating", "exporting", "completed"}:
+        return {"job_id": job.id, "status": job.status, "calls_used": job.calls_used}
+    if job:
+        job.status, job.error = "queued", ""
+    else:
+        job = CanvaPosterJob(content_id=item.id, workspace_id=ctx.workspace.id, status="queued")
+        ctx.db.add(job)
+    try:
+        ctx.db.commit()
+    except IntegrityError:
+        ctx.db.rollback()
+        job = ctx.db.execute(select(CanvaPosterJob).where(CanvaPosterJob.content_id == item.id,
+            CanvaPosterJob.workspace_id == ctx.workspace.id)).scalar_one()
+    worker.notify()
+    return {"job_id": job.id, "status": job.status, "calls_used": job.calls_used}
+
+
+@router.get("/content/{cid}/canva-poster")
+def canva_poster_status(cid: int, ctx: Ctx = Depends(get_ctx)):
+    item = ctx.get(ContentItem, cid)
+    job = ctx.db.execute(select(CanvaPosterJob).where(CanvaPosterJob.content_id == item.id,
+        CanvaPosterJob.workspace_id == ctx.workspace.id)).scalar_one_or_none()
+    return {"job": None if job is None else {"id": job.id, "status": job.status,
+            "calls_used": job.calls_used, "error": job.error}, "poster": item.canva_poster}
+
+
+@router.get("/content/{cid}/canva-poster/edit-link")
+async def canva_poster_edit_link(cid: int, ctx: Ctx = Depends(get_ctx)):
+    """Fetch a short-lived Canva edit link on demand; it is never stored or logged."""
+    from ...config import get_settings
+    from ...creative.canva_mcp import CanvaMCPError, connected_workspace_client, safe_canva_message
+    item = ctx.get(ContentItem, cid)
+    design_id = (item.canva_poster or {}).get("design_id")
+    if not design_id:
+        raise ApiError(404, "No committed Canva design exists for this item.", "not_found")
+    try:
+        async with connected_workspace_client(ctx.db, ctx.workspace.id, get_settings()) as (client, _credential):
+            if "get-design" not in client.tools:
+                raise CanvaMCPError("Canva MCP did not expose get-design.")
+            schema = client.schema("get-design")
+            props = schema.get("properties", {})
+            values = {"design_id": design_id, "user_intent": "Fetch this workspace design edit link."}
+            args = {k: v for k, v in values.items() if k in props}
+            if set(schema.get("required", [])) - set(args):
+                raise CanvaMCPError("get-design has required inputs GrowthPilot cannot safely map.")
+            result = await client.call("get-design", args)
+            from ...creative.canva_mcp import _nested
+            link = _nested(result, "edit_url", "editUrl")
+            if not isinstance(link, str) or not link.startswith("https://"):
+                raise CanvaMCPError("Canva did not return an HTTPS edit URL.")
+            return {"edit_url": link}
+    except Exception as exc:
+        raise ApiError(502, safe_canva_message(str(exc)), "canva_error") from None
 
 
 def _guard(fn):

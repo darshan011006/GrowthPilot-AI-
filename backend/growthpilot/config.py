@@ -20,7 +20,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from cryptography.fernet import Fernet
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -45,7 +45,9 @@ class ConfigError(RuntimeError):
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(str(PROJECT_ROOT / ".env"), ".env"), env_file_encoding="utf-8", extra="ignore"
+        # Always load the repository-root file, independent of the caller's working directory.
+        # Pydantic Settings still gives process environment variables higher precedence.
+        env_file=str(PROJECT_ROOT / ".env"), env_file_encoding="utf-8", extra="ignore"
     )
 
     app_mode: AppMode = AppMode.DEMO
@@ -87,6 +89,22 @@ class Settings(BaseSettings):
     image_generation_provider: str = "none"  # none | gemini
     image_generation_model: str = "gemini-3.1-flash-lite-image"
     image_generation_api_key: str = ""  # defaults to GEMINI_API_KEY when the provider is gemini
+
+    # Canva MCP poster integration (separate from social publishing).
+    canva_mcp_url: str = "https://api.canva.com/connect/v1/mcp"
+    canva_client_id: str = ""
+    canva_client_secret: str = ""
+    canva_redirect_uri: str = ""
+    canva_mcp_daily_cap: int = Field(default=10, ge=1, le=1000)
+
+    @field_validator("canva_mcp_url")
+    @classmethod
+    def _canva_mcp_https(cls, value: str) -> str:
+        from urllib.parse import urlparse
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("CANVA_MCP_URL must be an HTTPS URL without embedded credentials.")
+        return value.rstrip("/")
 
     # Catalogue ingestion (Poojaloka storefront API). Demo mode uses the bundled snapshot unless allowed.
     poojaloka_api_base: str = "https://api.poojaloka.com/api"
@@ -176,6 +194,12 @@ class Settings(BaseSettings):
     @property
     def image_generation_configured(self) -> bool:
         return self.image_generation_provider == "gemini" and bool(self.image_key)
+
+    @property
+    def canva_callback_uri(self) -> str:
+        # Canva compares redirect_uri byte-for-byte with the registered value.
+        # Require operators to configure that exact URI instead of deriving one.
+        return self.canva_redirect_uri
 
     @property
     def facebook_redirect(self) -> str:
