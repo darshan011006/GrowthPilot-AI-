@@ -54,14 +54,33 @@ def set_llm_override(llm: LLM | None) -> None:
     _override = llm
 
 
-def get_llm() -> LLM | None:
-    """The configured LLM, or None in demo mode. Raises LLMUnavailable in live mode without a key."""
+# The provider part of an LLM's ``name`` (and so of a run's ``planner``) → the provider key in settings.
+_NAME_PREFIXES = {"groq": "groq", "gemini": "gemini", "claude": "anthropic"}
+
+
+def provider_of(planner: str | None) -> str | None:
+    """The provider a run was started with, from its stored planner name (None for the demo planner)."""
+    head = (planner or "").removeprefix("rules:").split(":", 1)[0]
+    return _NAME_PREFIXES.get(head)
+
+
+def get_llm(provider: str | None = None) -> LLM | None:
+    """The configured LLM, or None in demo mode. Raises LLMUnavailable in live mode without a key.
+
+    ``provider`` pins a specific provider (a resumed run keeps the provider it started with) instead of the one
+    the current settings would pick."""
     if _override is not None:
         return _override
     s = get_settings()
     if s.is_demo:
         return None
-    provider = s.active_llm_provider
+    if provider:
+        key = {"groq": s.groq_api_key, "gemini": s.gemini_api_key, "anthropic": s.llm_key}.get(provider)
+        if not key:
+            raise LLMUnavailable(f"This run was started with {provider}, which is no longer configured. Restore its "
+                                 "API key, or start a new run.")
+    else:
+        provider = s.active_llm_provider
     if provider == "groq":
         from .groq_llm import GroqLLM
 

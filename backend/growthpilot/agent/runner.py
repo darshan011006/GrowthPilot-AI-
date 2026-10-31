@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from .. import audit, usage
 from ..config import get_settings
-from ..llm import LLMError, LLMUnavailable, get_llm
+from ..llm import LLMError, LLMUnavailable, get_llm, provider_of
 from ..models import (
     AgentRun,
     AgentStep,
@@ -125,7 +125,7 @@ class Runner:
         if run.planner == DemoPlanner.name or run.planner.startswith(RULES_PREFIX):
             self.planner = DemoPlanner()
         else:
-            llm = get_llm()
+            llm = get_llm(provider_of(run.planner))  # resume on the provider the run started with
             if llm is None:
                 raise LLMUnavailable("This run needs an LLM but the app is in demo mode.")
             self.planner = LLMPlanner(llm)

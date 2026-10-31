@@ -16,7 +16,7 @@ from growthpilot.agent.planner_demo import DemoPlanner
 from growthpilot.agent.runner import Runner, create_run, execute_run
 from growthpilot.db import session_scope
 from growthpilot.demo import fixtures
-from growthpilot.llm import LLMError, get_llm, groq_llm
+from growthpilot.llm import LLMError, LLMUnavailable, get_llm, groq_llm, provider_of
 from growthpilot.llm.groq_llm import GroqLLM, check_key, strict_schema, to_openai_messages
 from growthpilot.models import AgentRun, ContentItem, UsageRecord, Workspace
 from growthpilot.research import net
@@ -152,14 +152,42 @@ def test_tool_turn_returns_anthropic_shaped_blocks(monkeypatch, tmp_path):
                              "input": {"include_products": True}}]
 
 
-def test_malformed_tool_arguments_are_retryable(monkeypatch, tmp_path):
+@pytest.mark.parametrize("arguments", ["{not json", "[]", '"publish everything"', "null"])
+def test_malformed_tool_arguments_are_retryable(monkeypatch, tmp_path, arguments):
     _live(monkeypatch, tmp_path)
     net.set_transport(httpx.MockTransport(lambda req: httpx.Response(200, json=_completion(
         None, finish="tool_calls", tool_calls=[{"id": "c", "type": "function",
-                                                "function": {"name": "x", "arguments": "{not json"}}]))))
+                                                "function": {"name": "x", "arguments": arguments}}]))))
     with pytest.raises(LLMError) as exc:
         GroqLLM(KEY, MODEL).tool_turn("sys", [{"role": "user", "content": "Goal"}], [])
-    assert exc.value.retryable
+    assert exc.value.retryable and "malformed" in str(exc.value)
+
+
+@pytest.mark.parametrize("data,retryable", [
+    ({"choices": [], "usage": {}}, True),
+    (_completion(None), True),  # no text and no tool calls
+    (_completion("", finish="content_filter"), False)])
+def test_empty_or_filtered_planning_turns_never_end_the_run(monkeypatch, tmp_path, data, retryable):
+    _live(monkeypatch, tmp_path)
+    net.set_transport(httpx.MockTransport(lambda req: httpx.Response(200, json=data)))
+    with pytest.raises(LLMError) as exc:
+        GroqLLM(KEY, MODEL).tool_turn("sys", [{"role": "user", "content": "Goal"}], [])
+    assert exc.value.retryable is retryable
+
+
+@pytest.mark.parametrize("model,sent", [(MODEL, True), ("openai/gpt-oss-20b", True),
+                                        ("llama-3.3-70b-versatile", False)])
+def test_reasoning_effort_only_for_models_that_accept_it(monkeypatch, tmp_path, model, sent):
+    _live(monkeypatch, tmp_path)
+    seen = {}
+
+    def handler(req):
+        seen.update(json.loads(req.content))
+        return httpx.Response(200, json=_completion('{"name": "x"}'))
+
+    net.set_transport(httpx.MockTransport(handler))
+    GroqLLM(KEY, model).structured("sys", "prompt", Out)
+    assert ("reasoning_effort" in seen) is sent
 
 
 def test_429_waits_for_retry_after_then_succeeds(monkeypatch, tmp_path):
@@ -205,7 +233,8 @@ def test_daily_limit_stops_immediately(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("status,retryable,text", [(401, False, "GROQ_API_KEY"), (404, False, "GROQ_MODEL"),
-                                                   (413, False, "AGENT_PLANNER"), (503, True, "503")])
+                                                   (413, False, "AGENT_PLANNER"), (408, True, "408"),
+                                                   (503, True, "503")])
 def test_error_statuses(monkeypatch, tmp_path, status, retryable, text):
     _live(monkeypatch, tmp_path)
     net.set_transport(httpx.MockTransport(lambda req: httpx.Response(status, json={"error": {"message": KEY}})))
@@ -266,6 +295,27 @@ def test_planner_choice(monkeypatch, tmp_path, env, rules):
         run = create_run(db, workspace_id=ws.id, user_id=1, goal="Plan a week of Instagram posts")
         assert run.planner == (f"rules:groq:{MODEL}" if rules else f"groq:{MODEL}")
         assert isinstance(Runner(db, run).planner, DemoPlanner) is rules
+
+
+def test_runs_resume_on_the_provider_they_started_with(monkeypatch, tmp_path):
+    _live(monkeypatch, tmp_path, GEMINI_API_KEY="gemini-key", LLM_PROVIDER="gemini", AGENT_PLANNER="model")
+    with session_scope() as db:
+        ws = db.execute(select(Workspace)).scalars().first()
+        rid = create_run(db, workspace_id=ws.id, user_id=1, goal="Plan a week of Instagram posts").id
+    # The owner switches to Groq while the Gemini run is still queued.
+    monkeypatch.setenv("LLM_PROVIDER", "auto")
+    config.get_settings.cache_clear()
+    assert config.get_settings().active_llm_provider == "groq"
+    with session_scope() as db:
+        run = db.get(AgentRun, rid)
+        assert run.planner.startswith("gemini:") and provider_of(run.planner) == "gemini"
+        assert Runner(db, run).planner.llm.provider == "gemini"
+    # If the run's provider is no longer configured, it says so instead of silently switching.
+    monkeypatch.delenv("GEMINI_API_KEY")
+    config.get_settings.cache_clear()
+    with session_scope() as db, pytest.raises(LLMUnavailable, match="gemini"):
+        Runner(db, db.get(AgentRun, rid))
+    assert provider_of(f"rules:groq:{MODEL}") == "groq" and provider_of("demo-planner") is None
 
 
 def test_bad_groq_settings_are_rejected(monkeypatch, tmp_path):
@@ -330,7 +380,7 @@ def test_full_live_campaign_run_on_groq_rules_plan(monkeypatch, tmp_path):
         items = db.execute(select(ContentItem).where(ContentItem.campaign_id == run.campaign_id)).scalars().all()
         assert items and {i.generated_by for i in items} == {f"groq:{MODEL}"}
         recs = db.execute(select(UsageRecord).where(UsageRecord.provider == "groq")).scalars().all()
-        assert len(recs) == len(requests) and run.tokens_used >= sum(r.input_tokens for r in recs)
+        assert len(recs) == len(requests) and run.tokens_used >= sum(r.input_tokens + r.output_tokens for r in recs)
     # Every request fits well inside the free tier's 8,000 tokens a minute (prompt + output cap).
     biggest = max(len(json.dumps(b)) // 4 for b in requests) + groq_llm.MAX_OUTPUT_TOKENS
     print(f"groq rules-led run: {len(requests)} requests, ~{sum(len(json.dumps(b)) // 4 for b in requests)} prompt "

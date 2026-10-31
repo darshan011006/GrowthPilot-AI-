@@ -41,6 +41,8 @@ API = "https://api.groq.com/openai/v1"
 MAX_OUTPUT_TOKENS = 4096  # counts toward the tokens-per-minute limit, so kept modest for the free tier
 MAX_WAIT_SECONDS = 60  # wait out a 429 in-process up to this long; longer means a daily or hourly limit
 RATE_LIMIT_ATTEMPTS = 2
+# Models that accept ``reasoning_effort``; other models reject requests that include it.
+REASONING_MODEL_PREFIXES = ("openai/gpt-oss", "qwen/qwen3")
 
 # Keywords strict mode may reject; Pydantic still enforces them on the parsed result.
 _UNSUPPORTED = {"default", "format", "pattern", "minLength", "maxLength", "minimum", "maximum", "exclusiveMinimum",
@@ -145,7 +147,7 @@ class GroqLLM:
         if resp.status_code == 413:
             raise LLMError("The request is larger than Groq's tokens-per-minute limit for this organisation. Use "
                            "AGENT_PLANNER=rules on the free tier, or the Developer tier.")
-        if resp.status_code >= 500:
+        if resp.status_code >= 500 or resp.status_code == 408:
             raise LLMError(f"Groq API error (HTTP {resp.status_code}).", retryable=True)
         if resp.status_code >= 400:
             msg = self._error_message(resp)
@@ -175,14 +177,21 @@ class GroqLLM:
             usage.preflight(usage.estimate_llm_call(self.model, chars, MAX_OUTPUT_TOKENS), what)
 
     def _body(self, messages: list[dict]) -> dict:
-        return {"model": self.model, "messages": messages, "max_completion_tokens": MAX_OUTPUT_TOKENS,
-                "reasoning_effort": self.reasoning_effort}
+        body = {"model": self.model, "messages": messages, "max_completion_tokens": MAX_OUTPUT_TOKENS}
+        if self.model.startswith(REASONING_MODEL_PREFIXES):
+            body["reasoning_effort"] = self.reasoning_effort
+        return body
 
     @staticmethod
     def _choice(data: dict) -> dict:
-        choices = data.get("choices") or [{}]
-        if choices[0].get("finish_reason") == "length":
+        choices = data.get("choices") or []
+        if not choices:
+            raise LLMError("Groq returned no answer.", retryable=True)
+        finish = choices[0].get("finish_reason")
+        if finish == "length":
             raise LLMError("The Groq response was cut off (output limit). Try a smaller request.")
+        if finish == "content_filter":
+            raise LLMError("Groq's content filter stopped the response.")
         return choices[0].get("message") or {}
 
     # ── structured output ────────────────────────────────────────────────
@@ -218,8 +227,12 @@ class GroqLLM:
                 args = json.loads(fn.get("arguments") or "{}")
             except json.JSONDecodeError as exc:
                 raise LLMError("The model sent malformed tool arguments.", retryable=True) from exc
+            if not isinstance(args, dict):  # never run a tool on defaults the model didn't choose
+                raise LLMError("The model sent malformed tool arguments.", retryable=True)
             content.append({"type": "tool_use", "id": str(call.get("id") or ""), "name": fn.get("name", ""),
-                            "input": args if isinstance(args, dict) else {}})
+                            "input": args})
+        if not content:  # a refusal or empty answer must not end the run as if the work were done
+            raise LLMError("Groq returned an empty planning turn.", retryable=True)
         stop = "tool_use" if any(b["type"] == "tool_use" for b in content) else "end_turn"
         log.info("groq tool_turn model=%s calls=%d tokens=%d", self.model,
                  sum(1 for b in content if b["type"] == "tool_use"), tokens)
