@@ -23,7 +23,7 @@ from ...models import (
     Workspace,
 )
 from ...platforms import SPECS
-from ...services import seasonal
+from ...services import festival_dates, seasonal
 from ...services.validation import check_product_claims
 from .. import briefs as B
 from ..generation import pillar_kind
@@ -83,18 +83,27 @@ def capability(opts: list[B.ImageOption]) -> str:
 
 
 def festival_calendar(ctx: ToolContext, today: date) -> tuple[list[dict], list[str], list[dict]]:
-    """Verified festivals (dated in the brand's own calendar), undated names, and unverified calendar hints."""
+    """Verified festivals, names with no verified upcoming date, and unverified calendar hints.
+
+    A date comes from the brand's own calendar if it has one, else from the checked official lists in
+    ``services.festival_dates``. The built-in seasonal calendar is only ever a hint."""
     b = brand(ctx)
     src = b.catalogue_source or {}
     verified, undated = [], []
     for x in src.get("festivals") or []:
+        name = str(x.get("name", ""))[:80]
         start = B.parse_day(x.get("date") or x.get("startDate") or x.get("start"))
         end = B.parse_day(x.get("endDate") or x.get("end")) or start
         if start:
-            verified.append({"name": str(x.get("name", ""))[:80], "start": start, "end": end,
+            verified.append({"name": name, "start": start, "end": end,
                              "source": f"{b.name} festival calendar ({src.get('label') or src.get('kind') or 'brand'})"})
-        elif x.get("name"):
-            undated.append(str(x["name"]))
+            continue
+        occ = festival_dates.next_verified(x.get("slug") or name, today)
+        if occ:
+            verified.append({"name": name, "start": occ["start"], "end": occ["end"],
+                             "source": f"{occ['source']} (checked {festival_dates.CHECKED})"[:300]})
+        elif name:
+            undated.append(name)
     hints = [{"name": o["name"], "hint": f"{o['start']:%d %b %Y}", "start": o["start"], "end": o["end"]}
              for o in seasonal.upcoming(today, within_days=B.FESTIVAL_WINDOW_DAYS + 14) if o["kind"] == "festival"]
     return verified, undated, hints
@@ -178,10 +187,11 @@ def write_briefs(ctx: ToolContext, rows: list[ContentItem], gen, repeat_window: 
 
     verified, undated, hints = festival_calendar(ctx, today)
     if undated:
-        run_issues.append({"code": "festival_date_missing", "message": "The brand's festival calendar has no dates "
-                           f"for {', '.join(undated)}; festival posts stay evergreen until verified dates are added."})
+        run_issues.append({"code": "festival_date_missing", "message": "No verified upcoming date for "
+                           f"{', '.join(undated)}; posts about them stay evergreen until a checked date is added "
+                           "(services/festival_dates.py or the brand's festival calendar)."})
     for h in hints:
-        if not any(B.norm(h["name"])[:5] in B.norm(v["name"]) for v in verified):
+        if festival_dates.festival_key(h["name"]) not in {festival_dates.festival_key(v["name"]) for v in verified}:
             run_issues.append({"code": "festival_unverified", "message": f"{h['name']}: GrowthPilot's built-in "
                                f"planning calendar lists {h['hint']} but marks it “confirm locally”, so it wasn't used."})
 

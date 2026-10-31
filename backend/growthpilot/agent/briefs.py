@@ -144,7 +144,7 @@ class FestivalRef(_Strict):
     name: str = Field(min_length=1, max_length=80)
     start: date
     end: date
-    source: str = Field(min_length=1, max_length=200)
+    source: str = Field(min_length=1, max_length=300)
 
     @model_validator(mode="after")
     def _order(self) -> FestivalRef:
@@ -429,7 +429,7 @@ def palettes(colors: list[str], min_contrast: float = 4.5) -> list[tuple[str, li
     return out or [("fbf3e7-2b1810-c99a3d", ["#FBF3E7", "#2B1810", "#C99A3D"])]
 
 
-PACK_RE = re.compile(r"[\d.,]+[a-z]{0,3}|pkts?|pcs?|nos?|packs?|gms?|kg|ml", re.I)
+PACK_RE = re.compile(r"[\d.,]+[a-z]{0,3}|pkts?|pcs?|nos?|packs?|box(?:es)?|pairs?|gms?|kg|ml", re.I)
 DANGLING = {"size", "of", "with", "for", "and", "the", "a", "in", "set", "-", "–", "|", "&"}
 
 
@@ -574,7 +574,7 @@ def build_brief(f: BriefFacts, role: str, attempt: int = 0) -> CreativeBrief:
     if f.wants_festival and festival is None:
         detail = []
         if f.undated_festivals:
-            detail.append("no date in the brand's festival calendar for " + ", ".join(f.undated_festivals))
+            detail.append("no verified upcoming date for " + ", ".join(f.undated_festivals))
         for u in f.unverified_festivals:
             detail.append(f"{u['name']}: built-in planning calendar says {u['hint']} but marks it unconfirmed")
         issues.append(_issue("festival_date_missing", "No verified festival date within "

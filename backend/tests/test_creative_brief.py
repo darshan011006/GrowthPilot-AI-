@@ -89,6 +89,19 @@ def test_undated_festival_name_cannot_appear_on_an_evergreen_brief():
     assert any("without a verified date" in e for e in errs)
 
 
+def test_checked_festival_dates_have_sources_and_never_return_past_dates():
+    from growthpilot.services import festival_dates as F
+
+    assert F.festival_key("Krishna Janmashtami") == "janmashtami" and F.festival_key("Diwali") == "deepavali"
+    assert F.next_verified("deepavali", date(2026, 10, 31))["start"] == date(2026, 11, 8)
+    assert F.next_verified("Deepavali", date(2026, 11, 9))["start"] == date(2027, 10, 29)
+    assert F.next_verified("krishna-janmashtami", date(2026, 10, 31)) is None  # 4 Sep 2026 has passed
+    assert F.next_verified("navaratri", date(2026, 1, 1)) is None  # no checked start date
+    for occurrences in F.VERIFIED.values():
+        for o in occurrences:
+            assert o["source"] and o["end"] >= o["start"]
+
+
 # ── images ───────────────────────────────────────────────────────────────
 
 
@@ -311,13 +324,18 @@ def test_demo_campaign_saves_valid_briefs_and_versions_them(poojaloka_seeded):
     assert step["status"] == "ok", step["message"]
     out = step["output"]
     codes = {i["code"] for i in out["data_issues"]}
-    # The demo store calendar has no festival dates and no promotable product has a real photo: both reported.
-    assert "festival_date_missing" in codes and "mix_shortfall" in codes
+    # No promotable demo product has a real store photo, so the image slots fall short (reported).
+    assert "mix_shortfall" in codes
+    # Navaratri has no checked date, so it is always reported.
+    assert any(i["code"] == "festival_date_missing" and "Navaratri" in i["message"] for i in out["data_issues"])
     items = [api.get(f"/api/content/{cid}").json() for cid in out["content_ids"]]
     assert len(items) == 7
     for it in items:
         b = B.validate_brief(it["creative_brief"])
-        assert b.content_id == it["id"] and b.festival is None and b.image_policy == "text_only"
+        assert b.content_id == it["id"] and b.image_policy == "text_only"
+        if b.festival:  # only from the checked list, and only within the window of the post
+            assert b.festival.name == "Deepavali" and b.festival.start == date(2026, 11, 8)
+            assert "CAG" in b.festival.source and b.angle == "festival_prep"
         assert "Poojaloka" in b.required_text and "Poojaloka" in b.canva_query
     assert len({(i["creative_brief"]["headline"]) for i in items}) == len(items)
 

@@ -6,9 +6,9 @@ version, and a changed brief clears any approval. Nothing here renders a design,
 
 `brief-1.json` … `brief-5.json` are the first five posts of a real demo run: the Deepavali goal on the Poojaloka
 catalogue snapshot (24 Oct 2026), generated on 31 Oct 2026. The content and asset ids come from a throwaway
-database. All five are text-only for two reasons. First, the demo snapshot has no promotable product with a real
-store photo (the only one is a test listing). Second, the store's festival calendar has no dates. Each file lists
-these gaps under `data_issues`.
+database. All five are text-only because the demo snapshot has no promotable product with a real store photo (the
+only one is a test listing); each file lists this under `data_issues`. Brief 1 is about Deepavali on 8 Nov 2026, a
+date checked against the official holiday list.
 
 Schema and rules: `backend/growthpilot/agent/briefs.py`. To load a brief strictly, use
 `validate_brief(json_or_dict)`; it rejects unknown fields and broken rules.
@@ -45,8 +45,13 @@ Schema and rules: `backend/growthpilot/agent/briefs.py`. To load a brief strictl
   raise contrast or drop the price claim.
 - **Validation and fallback:** a brief that fails validation is redone once. If it fails again, the post gets a
   flagged, text-only evergreen brief (`validation_failed`).
-- **Festival dates:** these come only from the brand's festival calendar (`catalogue_source.festivals[].date`).
-  GrowthPilot's built-in seasonal calendar is a planning hint and is never used as a date.
+- **Festival dates:** these come from the brand's festival calendar (`catalogue_source.festivals[].date`) when it
+  has one. Otherwise they come from `backend/growthpilot/services/festival_dates.py`, a table of dates checked
+  against official holiday lists, each with its source. GrowthPilot's built-in seasonal calendar is a planning hint
+  and is never used as a date. The checked dates so far:
+  - Deepavali: 8 Nov 2026 (official Karnataka list) and 29 Oct 2027 (from the DoPT 2027 order)
+  - Krishna Janmashtami: 4 Sep 2026, now past
+  - Navaratri: none yet. The official lists give only the last day (20 Oct 2026), not the start.
 
 ## Not built yet: the Canva step
 

@@ -6,16 +6,16 @@
   "objective": "saves_per_reach: Create a seven-day Deepavali campaign for Poojaloka's diyas, brass items and pooja essentials across Instagram, Facebook, Pinterest and Threads, aimed at families in Bengaluru.",
   "audience": "Families in Bengaluru and across Karnataka preparing for daily pooja and festivals; people setting up a first home altar. (Suggested from the catalogue and site; confirm with real customer data.)",
   "festival": null,
-  "angle": "category_edit",
+  "angle": "material_focus",
   "image_policy": "text_only",
   "image_refs": [],
-  "headline": "Browse our Mud Items range",
-  "tagline": "Mud Items for every day and festive days, at Poojaloka",
-  "cta": "Browse the range",
+  "headline": "Clay for your pooja space",
+  "tagline": "Our Matki Diya, from the Mud Items range at Poojaloka",
+  "cta": "Tap the link in bio",
   "required_text": [
-    "Browse our Mud Items range",
-    "Mud Items for every day and festive days, at Poojaloka",
-    "Browse the range",
+    "Clay for your pooja space",
+    "Our Matki Diya, from the Mud Items range at Poojaloka",
+    "Tap the link in bio",
     "Poojaloka"
   ],
   "claims_allowed": [
@@ -68,7 +68,7 @@
     "mood": "warm, respectful and uncluttered"
   },
   "needs_human_review": false,
-  "canva_query": "Design a 1080×1350 (4:5 portrait) Instagram post for Poojaloka. Layout: solid colour band at the top holding the headline, tagline below. Colours #2B1810, #D9722A, #6B1420; mood: warm, respectful and uncluttered. Text, exactly as written: \"Browse our Mud Items range\", \"Mud Items for every day and festive days, at Poojaloka\", \"Browse the range\", \"Poojaloka\". Use exactly the quoted text and add no other words, numbers, prices, offers or claims. Typographic only: no product photos, stock photos, deities, religious figures, mantras or Sanskrit text.",
+  "canva_query": "Design a 1080×1350 (4:5 portrait) Instagram post for Poojaloka. Layout: solid colour band at the top holding the headline, tagline below. Colours #2B1810, #D9722A, #6B1420; mood: warm, respectful and uncluttered. Text, exactly as written: \"Clay for your pooja space\", \"Our Matki Diya, from the Mud Items range at Poojaloka\", \"Tap the link in bio\", \"Poojaloka\". Use exactly the quoted text and add no other words, numbers, prices, offers or claims. Typographic only: no product photos, stock photos, deities, religious figures, mantras or Sanskrit text.",
   "signals": {
     "trend_ids": [
       8,
@@ -79,7 +79,7 @@
       3,
       4
     ],
-    "reason": "text only slot in the weekly mix; angle category edit; 2 supporting research signal(s); general post pattern seen in 3 competitor reference(s), not copied; demo data"
+    "reason": "text only slot in the weekly mix; angle material focus; 2 supporting research signal(s); general post pattern seen in 3 competitor reference(s), not copied; demo data"
   },
   "data_issues": [
     {
@@ -95,11 +95,6 @@
     {
       "code": "offer_unverified",
       "message": "Offers pillar, but no verified offer or discount data exists, so the brief makes no offer.",
-      "needs_review": false
-    },
-    {
-      "code": "festival_date_missing",
-      "message": "No verified festival date within 21 days, so this is an evergreen post (no date in the brand's festival calendar for Krishna Janmashtami, Navaratri, Deepavali; Diwali: built-in planning calendar says 08 Nov 2026 but marks it unconfirmed).",
       "needs_review": false
     }
   ]

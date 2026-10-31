@@ -51,11 +51,13 @@
   "needs_human_review": false,
   "canva_query": "Design a 1080×1350 (4:5 portrait) Instagram carousel cover for Poojaloka. Layout: left-aligned column with generous right margin. Colours #2B1810, #FBF3E7, #6B1420; mood: warm, respectful and uncluttered. Text, exactly as written: \"Vastu Tips for Pooja Room & Sacred Spaces\", \"Read the full guide from Poojaloka\", \"Save this guide\", \"Poojaloka\". Use exactly the quoted text and add no other words, numbers, prices, offers or claims. Typographic only: no product photos, stock photos, deities, religious figures, mantras or Sanskrit text.",
   "signals": {
-    "trend_ids": [],
+    "trend_ids": [
+      8
+    ],
     "competitor_insight_ids": [
       5
     ],
-    "reason": "text only slot in the weekly mix; angle know how; general carousel pattern seen in 1 competitor reference(s), not copied; demo data"
+    "reason": "text only slot in the weekly mix; angle know how; 1 supporting research signal(s); general carousel pattern seen in 1 competitor reference(s), not copied; demo data"
   },
   "data_issues": [
     {
@@ -66,11 +68,6 @@
     {
       "code": "price_not_verified",
       "message": "Kashi Ashtagandha Chandan: the price isn't fresh or is flagged, so no price claim is allowed.",
-      "needs_review": false
-    },
-    {
-      "code": "festival_date_missing",
-      "message": "No verified festival date within 21 days, so this is an evergreen post (no date in the brand's festival calendar for Krishna Janmashtami, Navaratri, Deepavali; Diwali: built-in planning calendar says 08 Nov 2026 but marks it unconfirmed).",
       "needs_review": false
     }
   ]
