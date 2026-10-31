@@ -17,6 +17,7 @@ from .config import get_settings
 from .db import session_factory
 from .models import OAuthState, UserSession, Workspace, utcnow
 from .services import analytics, publishing
+from .services.canva_poster_pipeline import process_queued as process_canva_poster_jobs
 
 log = logging.getLogger("growthpilot.worker")
 _wake = threading.Event()
@@ -27,13 +28,14 @@ def notify() -> None:
 
 
 def tick(*, metrics: bool = False) -> dict:
-    stats = {"runs": 0, "published": 0, "metrics": 0}
+    stats = {"runs": 0, "published": 0, "metrics": 0, "canva_posters": 0}
     db = session_factory()()
     try:
         while (run := claim_next_run(db)) is not None:
             execute_run(db, run)
             stats["runs"] += 1
         stats["published"] = publishing.run_due(db)
+        stats["canva_posters"] = process_canva_poster_jobs(db, limit=1)
         if metrics:
             for ws_id in db.execute(select(Workspace.id)).scalars().all():
                 stats["metrics"] += analytics.collect(db, ws_id)["collected"]

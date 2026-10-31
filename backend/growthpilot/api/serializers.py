@@ -163,7 +163,7 @@ def content(i: ContentItem, tz: ZoneInfo, full: bool = False) -> dict:
         "id", "campaign_id", "experiment_id", "variant_label", "run_id", "platform", "master_id", "content_type",
         "pillar", "title",
         "hook", "caption", "hashtags", "cta", "image_brief", "carousel_outline", "video_script", "product_ids",
-        "evidence_ids", "asset_id", "slide_asset_ids", "validation", "status", "connection_id", "generated_by",
+        "evidence_ids", "asset_id", "slide_asset_ids", "validation", "canva_poster", "status", "connection_id", "generated_by",
         "rationale", "version", "approved_version", "approved_by", "publish_authorized", "review_note", "external_id",
         "external_url", "publish_verified", "last_error", "is_synthetic", "approved_hash", "creative_brief")}
     d |= {"planned_at": dt(i.planned_at), "scheduled_at": dt(i.scheduled_at), "published_at": dt(i.published_at),

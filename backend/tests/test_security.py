@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import struct
+from types import SimpleNamespace
 
 import pytest
+from starlette.requests import Request
 
+from growthpilot.api import deps
+from growthpilot.api.deps import ApiError, require_json_origin
+from growthpilot.config import AppEnv
 from growthpilot.research import net
 from growthpilot.security import redact
 
@@ -33,6 +38,29 @@ def test_login_requires_json_and_header(demo):
     assert r.status_code == 403
     r = demo.c.post("/api/auth/login", json={"email": "owner@example.com", "password": PASSWORD})
     assert r.status_code == 403  # missing X-Requested-With
+
+
+def test_tunnel_origin_is_allowed_only_in_development(monkeypatch):
+    def request_for(origin: str) -> Request:
+        headers = [(b"origin", origin.encode()), (b"content-type", b"application/json"),
+                   (b"x-requested-with", b"GrowthPilot")]
+        return Request({"type": "http", "method": "POST", "path": "/api/auth/login", "headers": headers,
+                        "query_string": b"", "server": ("backend", 8000), "client": ("127.0.0.1", 1234),
+                        "scheme": "http", "http_version": "1.1"})
+
+    monkeypatch.setenv("GROWTHPILOT_TUNNEL_HOST", "sample-tunnel.example")
+    monkeypatch.setattr(deps, "get_settings", lambda: SimpleNamespace(
+        app_env=AppEnv.DEVELOPMENT, base_url="http://localhost:3000"))
+    require_json_origin(request_for("https://sample-tunnel.example"))
+    require_json_origin(request_for("http://127.0.0.1:3000"))
+    with pytest.raises(ApiError):
+        require_json_origin(request_for("https://another-tunnel.example"))
+
+    monkeypatch.setattr(deps, "get_settings", lambda: SimpleNamespace(
+        app_env=AppEnv.PRODUCTION, base_url="https://growthpilot.example"))
+    with pytest.raises(ApiError) as blocked:
+        require_json_origin(request_for("https://sample-tunnel.example"))
+    assert blocked.value.status_code == 403
 
 
 def test_registration_is_invite_only_after_first_user(demo):

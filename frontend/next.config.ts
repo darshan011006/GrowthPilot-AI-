@@ -3,8 +3,11 @@ import type { NextConfig } from "next";
 // The browser only ever talks to this Next.js origin; /api/* is proxied to the FastAPI backend, so the
 // session cookie stays same-origin (HttpOnly, SameSite=Lax) and no CORS is needed.
 const backend = process.env.BACKEND_URL || "http://127.0.0.1:8000";
+const devTunnelHost = process.env.GROWTHPILOT_TUNNEL_HOST || "ntsc-sticks-queensland-strength.trycloudflare.com";
 
 const nextConfig: NextConfig = {
+  // Permit the Cloudflare host to reach the dev server; this option is dev-server-only.
+  allowedDevOrigins: [devTunnelHost],
   // Allow demo and live previews to run side by side without sharing Next's dev cache/lock.
   distDir: process.env.GROWTHPILOT_DIST_DIR || ".next",
   cacheComponents: true,

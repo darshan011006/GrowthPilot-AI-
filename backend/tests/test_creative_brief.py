@@ -54,6 +54,34 @@ def test_verified_festival_within_21_days_is_used():
     assert not any(i.code == "festival_date_missing" for i in b.data_issues)
 
 
+def test_canva_handoff_adapter_preserves_contract_and_evidence():
+    f = facts(images=[B.ImageOption("brand_site", 7, "real_match", "brass-diya")],
+              product=real_photo())
+    b = build(f, "image")
+    payload = B.to_canva_handoff(b)
+    assert payload["schema_version"] == 1
+    assert payload["content_id"] == b.content_id
+    assert payload["format"] == "instagram_post"
+    assert payload["required_text"] == b.required_text
+    assert payload["image_policy"] == "must_use_images"
+    assert payload["image_refs"] == [{"source": "brand_site", "asset_id": 7,
+                                       "product_sku": "brass-diya", "trust": "real_match"}]
+    assert payload["claims_allowed"] == [c.text for c in b.claims_allowed]
+    assert payload["claim_evidence"] == [c.model_dump(mode="json") for c in b.claims_allowed]
+    assert payload["canonical"]["schema_version"] == "1.0"
+    assert "Poojaloka" in payload["canva_query"]
+
+
+def test_canva_handoff_legacy_brief_defaults_image_trust_and_null_festival():
+    b = build(facts(), "text_only")
+    legacy = B.CreativeBrief.model_validate(b.model_dump(exclude={"data_issues"}))
+    payload = B.to_canva_handoff(legacy)
+    assert payload["festival"] is None
+    assert payload["image_refs"] == []
+    assert payload["image_policy"] == "text_only"
+    assert payload["banned"] == legacy.banned
+
+
 def test_festival_beyond_21_days_or_undated_stays_evergreen_and_is_reported():
     far = facts(pillar="Festival guide", pillar_kind="guide", wants_festival=True, undated_festivals=["Navaratri"],
                 festivals=[{"name": "Sankranti", "start": TODAY + timedelta(days=40),
