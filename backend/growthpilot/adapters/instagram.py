@@ -20,6 +20,8 @@ from .base import (
     StatusResult,
 )
 
+_sleep = time.sleep
+
 AUTH_URL = "https://www.instagram.com/oauth/authorize"
 TOKEN_URL = "https://api.instagram.com/oauth/access_token"  # noqa: S105
 GRAPH = "https://graph.instagram.com"
@@ -446,7 +448,7 @@ class InstagramAdapter:
                     f"Instagram media processing failed: {status}."
                 )
 
-            time.sleep(5)
+            _sleep(5)
 
         raise AdapterError(
             "Instagram is still processing the media. Retry later.",
