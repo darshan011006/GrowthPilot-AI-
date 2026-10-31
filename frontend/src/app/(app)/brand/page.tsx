@@ -13,7 +13,8 @@ type Tab = "profile" | "marketing" | "claims" | "personas" | "products" | "festi
 
 type WebsiteProduct = { name: string; sku: string; category: string; description: string; price: string | null; currency: string;
   availability: string; image_urls: string[]; source_url: string };
-type WebsiteDraft = { name: string; website: string; description: string; positioning: string; content_pillars: string[];
+type WebsiteDraft = { name: string; website: string; description: string; positioning: string; location: string; audience: string;
+  voice: string; tone: string; goals: string; visual_guidelines: string; colors: string[]; content_pillars: string[];
   profile_sources: { field: string; source_url: string; retrieved_at: string; note: string }[];
   pages_scanned: { url: string; title: string }[]; products: WebsiteProduct[]; text_preview: string; needs_user_confirmation: string[] };
 const productKey = (product: WebsiteProduct) => `${product.source_url}|${product.sku}|${product.name}`;
@@ -43,9 +44,6 @@ function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | 
   const [draft, setDraft] = useState<WebsiteDraft | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
-  const [audience, setAudience] = useState(brand?.audience || "");
-  const [voice, setVoice] = useState(brand?.voice || "");
-  const [goals, setGoals] = useState(brand?.goals || "");
   const [platforms, setPlatforms] = useState<string[]>(brand?.platform_preferences || []);
   const [completion, setCompletion] = useState<{ products: number; photos: number } | null>(null);
   const scan = useAction();
@@ -63,7 +61,8 @@ function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | 
     const host = (() => { try { return new URL(normalized).hostname; } catch { return ""; } })();
     if (!host) { scan.setError("Enter a valid website URL first."); return; }
     setDraft({ name: host.replace(/^www\./, "").split(".")[0].replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      website: normalized, description: "", positioning: "", content_pillars: [], profile_sources: [], pages_scanned: [],
+      website: normalized, description: "", positioning: "", location: "", audience: "", voice: "", tone: "", goals: "",
+      visual_guidelines: "", colors: [], content_pillars: [], profile_sources: [], pages_scanned: [],
       products: [], text_preview: "", needs_user_confirmation: ["description", "audience", "voice", "goals", "claims"] });
     setSelectedProducts(new Set());
     setCompletion(null);
@@ -97,8 +96,10 @@ function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | 
       await api.put("/api/brand", { ...existing,
       name: draft.name.trim(), website: draft.website, description: draft.description || existing.description,
       positioning: draft.positioning, content_pillars: draft.content_pillars,
-      audience: audience.trim() || existing.audience, voice: voice.trim() || existing.voice,
-      goals: goals.trim() || existing.goals, platform_preferences: platforms,
+      location: draft.location.trim() || existing.location, audience: draft.audience.trim() || existing.audience,
+      voice: draft.voice.trim() || existing.voice, tone: draft.tone.trim() || existing.tone,
+      goals: draft.goals.trim() || existing.goals, visual_guidelines: draft.visual_guidelines.trim() || existing.visual_guidelines,
+      colors: draft.colors.length ? draft.colors : existing.colors, platform_preferences: platforms,
       profile_sources: [...(brand?.profile_sources || []), ...draft.profile_sources],
       permitted_sources: [...new Set([...existing.permitted_sources, new URL(draft.website).hostname])],
       });
@@ -119,15 +120,22 @@ function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | 
     {draft && <div className="mt-4 space-y-3 rounded-xl border border-line p-4">
       <div className="flex flex-wrap items-center justify-between gap-2"><strong>Review your setup draft</strong><Badge tone="warn">Confirm before use</Badge></div>
       <Field label="Suggested business name">{(id) => <Input id={id} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />}</Field>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Location (from published business address)">{(id) => <Input id={id} value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} placeholder="Not found on public pages" />}</Field>
+        <Field label="Website">{(id) => <Input id={id} value={draft.website} onChange={(e) => setDraft({ ...draft, website: e.target.value })} />}</Field>
+      </div>
       <Field label="Suggested description">{(id) => <Textarea id={id} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />}</Field>
-      <Field label="Page topics / positioning">{(id) => <Textarea id={id} value={draft.positioning} onChange={(e) => setDraft({ ...draft, positioning: e.target.value })} />}</Field>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Positioning">{(id) => <Textarea id={id} value={draft.positioning} onChange={(e) => setDraft({ ...draft, positioning: e.target.value })} />}</Field>
+        <Field label="Audience (suggestion)">{(id) => <Textarea id={id} value={draft.audience} onChange={(e) => setDraft({ ...draft, audience: e.target.value })} placeholder="Not enough public evidence; add your audience" />}</Field>
+        <Field label="Voice (suggestion)">{(id) => <Textarea id={id} value={draft.voice} onChange={(e) => setDraft({ ...draft, voice: e.target.value })} />}</Field>
+        <Field label="Tone (suggestion)">{(id) => <Textarea id={id} value={draft.tone} onChange={(e) => setDraft({ ...draft, tone: e.target.value })} />}</Field>
+        <Field label="Goals (suggestion)">{(id) => <Textarea id={id} value={draft.goals} onChange={(e) => setDraft({ ...draft, goals: e.target.value })} />}</Field>
+        <Field label="Visual guidelines (suggestion)">{(id) => <Textarea id={id} value={draft.visual_guidelines} onChange={(e) => setDraft({ ...draft, visual_guidelines: e.target.value })} />}</Field>
+        <Field label="Brand colours — hex, comma separated">{(id) => <Input id={id} value={draft.colors.join(", ")} onChange={(e) => setDraft({ ...draft, colors: e.target.value.split(",").map((c) => c.trim()).filter(Boolean) })} placeholder="#111111, #f5f5f5" />}</Field>
+      </div>
       <div className="rounded-lg border border-line bg-panel-2 p-3">
-        <p className="mb-2 text-sm font-semibold">A few details only you know</p>
-        <div className="grid gap-3 md:grid-cols-3">
-          <Field label="Who do you sell to?">{(id) => <Input id={id} value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. first-time homeowners" />}</Field>
-          <Field label="How should the brand sound?">{(id) => <Input id={id} value={voice} onChange={(e) => setVoice(e.target.value)} placeholder="e.g. warm, practical, confident" />}</Field>
-          <Field label="Main goal right now">{(id) => <Input id={id} value={goals} onChange={(e) => setGoals(e.target.value)} placeholder="e.g. product discovery" />}</Field>
-        </div>
+        <p className="mb-2 text-sm font-semibold">Suggestions are editable; confirm before agents use them.</p>
         <div className="mt-2"><span className="mr-2 text-xs text-muted">Channels to focus on:</span><div className="inline-flex flex-wrap gap-2">{PLATFORM_ORDER.map((p) => <label key={p} className="flex cursor-pointer items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs"><input type="checkbox" checked={platforms.includes(p)} onChange={(e) => setPlatforms(e.target.checked ? [...platforms, p] : platforms.filter((x) => x !== p))} /><PlatformChip platform={p} withLabel /></label>)}</div></div>
       </div>
       <div className="rounded-lg border border-line p-3">

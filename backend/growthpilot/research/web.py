@@ -32,6 +32,8 @@ class PageSnapshot:
     headings: list[str] = field(default_factory=list)
     links: list[str] = field(default_factory=list)
     products: list[dict] = field(default_factory=list)
+    site_profile: dict = field(default_factory=dict)
+    colors: list[str] = field(default_factory=list)
 
 
 class _Extractor(HTMLParser):
@@ -46,22 +48,32 @@ class _Extractor(HTMLParser):
         self.links: list[str] = []
         self.images: list[str] = []
         self.jsonld: list[str] = []
+        self.theme_color = ""
+        self.css_colors: list[str] = []
         self._jsonld_data: list[str] | None = None
         self._text: list[str] = []
         self._skip = 0
         self._in_title = False
+        self._in_style = False
         self._heading: list[str] | None = None
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
         if tag == "script" and "ld+json" in (a.get("type") or "").lower():
             self._jsonld_data = []
+        elif tag == "style":
+            self._skip += 1
+            self._in_style = True
         elif tag in self.SKIP:
             self._skip += 1
         elif tag == "title":
             self._in_title = True
         elif tag == "meta" and (a.get("name", "").lower() == "description" or a.get("property") == "og:description"):
             self.description = self.description or (a.get("content") or "")[:500]
+        if tag == "meta" and a.get("name", "").lower() == "theme-color":
+            self.theme_color = (a.get("content") or "").strip()[:20]
+        style = a.get("style", "")
+        self.css_colors.extend(re.findall(r"#[0-9a-fA-F]{6}\b", style))
         if tag == "meta" and a.get("property", "").lower() in ("og:image", "og:image:url") and a.get("content"):
             self.images.append(urljoin(self.base, a["content"]))
         elif tag == "img":
@@ -85,6 +97,10 @@ class _Extractor(HTMLParser):
             if raw:
                 self.jsonld.append(raw[:200_000])
             self._jsonld_data = None
+        elif tag == "style":
+            self._in_style = False
+            if self._skip:
+                self._skip -= 1
         elif tag in self.SKIP and self._skip:
             self._skip -= 1
         elif tag == "title":
@@ -98,6 +114,9 @@ class _Extractor(HTMLParser):
     def handle_data(self, data):
         if self._jsonld_data is not None:
             self._jsonld_data.append(data)
+            return
+        if self._in_style:
+            self.css_colors.extend(re.findall(r"#[0-9a-fA-F]{6}\b", data))
             return
         if self._skip:
             return
@@ -181,6 +200,41 @@ def _normalise_products(raw_blocks: list[str], page_url: str, page_images: list[
     return list(unique.values())[:100]
 
 
+def _site_profile(raw_blocks: list[str]) -> dict:
+    """Extract factual organization identity/location fields from Schema.org JSON-LD."""
+    def nodes(value):
+        if isinstance(value, list):
+            for item in value:
+                yield from nodes(item)
+        elif isinstance(value, dict):
+            kinds = value.get("@type", [])
+            if isinstance(kinds, str):
+                kinds = [kinds]
+            if any(str(kind).rsplit("/", 1)[-1].lower() in {"organization", "store", "localbusiness", "brand"} for kind in kinds):
+                yield value
+            for key in ("@graph", "publisher", "brand", "author", "mainEntity"):
+                if key in value:
+                    yield from nodes(value[key])
+
+    for raw in raw_blocks:
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+        for item in nodes(data):
+            address = item.get("address") or {}
+            if isinstance(address, list):
+                address = address[0] if address else {}
+            if not isinstance(address, dict):
+                address = {}
+            location = ", ".join(str(address.get(k) or "").strip() for k in ("addressLocality", "addressRegion", "addressCountry") if address.get(k))
+            profile = {"name": _text_value(item.get("name"))[:120], "description": _text_value(item.get("description"))[:500],
+                       "location": location[:160], "slogan": _text_value(item.get("slogan"))[:300]}
+            if any(profile.values()):
+                return profile
+    return {}
+
+
 def robots_allows(url: str) -> bool:
     p = urlparse(url)
     robots_url = f"{p.scheme}://{p.netloc}/robots.txt"
@@ -225,6 +279,8 @@ def fetch_page(url: str, *, allowed_domains: list[str] | None = None) -> PageSna
         url=str(resp.request.url), status=resp.status_code, title=" ".join(ex.title.split())[:300],
         description=ex.description, text=ex.text()[:20000], headings=ex.headings, links=ex.links,
         products=_normalise_products(ex.jsonld, str(resp.request.url), ex.images),
+        site_profile=_site_profile(ex.jsonld),
+        colors=list(dict.fromkeys(([ex.theme_color] if re.fullmatch(r"#[0-9a-fA-F]{6}", ex.theme_color) else []) + ex.css_colors))[:8],
     )
 
 

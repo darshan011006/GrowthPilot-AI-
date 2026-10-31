@@ -131,6 +131,8 @@ def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
             "Retry later or complete this draft manually; no business details were inferred."
         )
         return {"draft": {"name": fallback_name, "website": url, "description": "", "positioning": "",
+                           "location": "", "audience": "", "voice": "", "tone": "", "goals": "",
+                           "visual_guidelines": "", "colors": [],
                            "content_pillars": [], "profile_sources": [], "pages_scanned": [], "text_preview": "",
                            "products": [],
                            "needs_user_confirmation": ["description", "positioning", "audience", "voice", "goals",
@@ -138,10 +140,30 @@ def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
                 "warnings": [warning]}
     home = pages[0]
     title = home.title.split(" | ")[0].split(" — ")[0].split(" - ")[0].strip()
-    name = title[:120] or host.removeprefix("www.").split(".")[0].replace("-", " ").title()
-    description = home.description or next((p.description for p in pages if p.description), "")
+    profiles = [p.site_profile for p in pages if p.site_profile]
+    profile = profiles[0] if profiles else {}
+    name = (profile.get("name") or title)[:120] or host.removeprefix("www.").split(".")[0].replace("-", " ").title()
+    description = home.description or next((p.description for p in pages if p.description), "") or profile.get("description", "")
     text_chunks = [p.text for p in pages]
     headings = list(dict.fromkeys(h for p in pages for h in p.headings))[:20]
+    all_text = " ".join([description, *(p.text for p in pages), *(p.title for p in pages)]).lower()
+    product_categories = list(dict.fromkeys(product.get("category", "") for page in pages for product in page.products if product.get("category")))
+    colors = list(dict.fromkeys(color for page in pages for color in page.colors))[:6]
+    location = profile.get("location", "")
+    audience = ""
+    if re.search(r"\b(men|menswear|for him)\b", all_text):
+        audience = "Men shopping for contemporary fashion; suggested from the site's product/category language."
+    elif re.search(r"\b(women|womenswear|for her)\b", all_text):
+        audience = "Women shopping for fashion; suggested from the site's product/category language."
+    elif product_categories:
+        audience = f"People shopping for {', '.join(product_categories[:3])}; suggested from listed product categories."
+    elif any(p.products for p in pages):
+        audience = "Online shoppers interested in the products listed on this site; confirm your target audience."
+    voice = "Confident and customer-focused; suggested from the site's public marketing copy."
+    tone = "Clear, helpful, and aligned with the site's wording; suggested from public page copy."
+    goals = "Help customers discover products and support online sales; suggested for an online storefront. Confirm your priorities."
+    visual = "Use the site's own product imagery and visual identity. Avoid introducing unsupported product, discount, or performance claims."
+    positioning = profile.get("slogan") or description or "\n".join(headings[:5])
     retrieved = datetime.now(UTC).isoformat()
     sources = []
     for page in pages:
@@ -151,6 +173,22 @@ def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
         if page.description:
             sources.append({"field": "description", "source_url": page.url, "retrieved_at": retrieved,
                             "note": page.description[:300]})
+        if page.site_profile.get("location"):
+            sources.append({"field": "location", "source_url": page.url, "retrieved_at": retrieved,
+                            "note": f"Structured business address: {page.site_profile['location']}"})
+    for field_name, value, note in (
+        ("positioning", positioning, "Suggested from published site description, slogan, or headings; review."),
+        ("audience", audience, "Suggested from public product/category language; confirm target audience."),
+        ("voice", voice, "Editorial suggestion based on public marketing copy, not a verified brand rule."),
+        ("tone", tone, "Editorial suggestion based on public page wording, not a verified brand rule."),
+        ("goals", goals, "Generic ecommerce suggestion; confirm business priorities."),
+        ("visual_guidelines", visual, "Suggested guardrail based on public product imagery and factual-content policy."),
+    ):
+        if value:
+            sources.append({"field": field_name, "source_url": home.url, "retrieved_at": retrieved, "note": note})
+    if colors:
+        sources.append({"field": "colors", "source_url": home.url, "retrieved_at": retrieved,
+                        "note": "Colors detected in the page theme/inline styles; verify against your official brand palette."})
     discovered = []
     seen_products = set()
     for page in pages:
@@ -160,12 +198,14 @@ def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
                 seen_products.add(key)
                 discovered.append(product)
     return {"draft": {"name": name, "website": url, "description": description,
-                       "positioning": "\n".join(headings[:8]),
+                       "location": location, "audience": audience, "voice": voice, "tone": tone,
+                       "goals": goals, "visual_guidelines": visual, "colors": colors,
+                       "positioning": positioning,
                        "content_pillars": headings[:8], "profile_sources": sources,
                        "pages_scanned": [{"url": p.url, "title": p.title} for p in pages],
                        "products": discovered[:50],
                        "text_preview": "\n".join(text_chunks)[:1600],
-                       "needs_user_confirmation": ["audience", "voice", "goals", "claims", "social accounts"]},
+                       "needs_user_confirmation": ["location", "audience", "voice", "tone", "goals", "visual_guidelines", "colors", "claims", "social accounts"]},
             "warnings": errors[:4]}
 
 
