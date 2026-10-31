@@ -41,7 +41,12 @@ UNIT_PRICES: dict[str, float] = {
     "brave:web_search": 5.00 / 1000,  # Search plan; Brave applies a monthly free credit first
     "gemini-3.1-flash-lite-image": 0.0336,
     "gemini-3.1-flash-image": 0.067,
-    "gemini-nano-banana-2.1": 0.0336,
+    "gemini-nano-banana-2.1": 0.0336,  # 1K
+    # Per output image by size (Gemini API pricing page, checked 2026-11-01). No free tier for image output.
+    "gemini-nano-banana-2.1:1K": 0.0336,
+    "gemini-nano-banana-2.1:2K": 0.0504,
+    "gemini-nano-banana-2.1:4K": 0.113,
+    "gemini-3.1-flash-image:2K": 0.101,
 }
 FALLBACK_TOKEN_PRICE = (5.00, 25.00)  # conservative when a model isn't in the table
 

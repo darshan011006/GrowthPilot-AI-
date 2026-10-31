@@ -90,6 +90,20 @@ class Settings(BaseSettings):
     image_generation_model: str = "gemini-3.1-flash-lite-image"
     image_generation_api_key: str = ""  # defaults to GEMINI_API_KEY when the provider is gemini
 
+    # Campaign generation (research → strategy → captions → one 2K image per day). Images need
+    # IMAGE_GENERATION_PROVIDER=gemini; otherwise the local poster renderer is used and the UI says so.
+    campaign_image_model: str = "gemini-nano-banana-2.1"  # "Nano Banana 2.1"; verified 2026-11-01
+    campaign_image_size: str = "2K"  # 1K | 2K | 4K (uppercase K, as the Gemini API requires)
+    campaign_max_searches: int = Field(default=5, ge=0, le=20)  # Brave requests per campaign
+    campaign_image_attempts: int = Field(default=2, ge=1, le=5)  # automatic tries per day before it fails
+    campaign_image_concurrency: int = Field(default=1, ge=1, le=4)  # image requests in flight at once
+    campaign_budget_usd: float = Field(default=1.00, ge=0)  # per generated campaign; checked before every call
+    image_timeout_seconds: int = Field(default=120, ge=10, le=600)
+    search_timeout_seconds: int = Field(default=15, ge=3, le=120)
+    # Brave's terms allow keeping API results only on plans with storage rights. Without them, search snippets are
+    # used for the strategy and then dropped; only titles, URLs and the agent's own findings are kept.
+    brave_storage_rights: bool = False
+
     # Canva MCP poster integration (separate from social publishing).
     canva_mcp_url: str = "https://api.canva.com/connect/v1/mcp"
     canva_client_id: str = ""
@@ -269,6 +283,8 @@ class Settings(BaseSettings):
             raise ConfigError("SEARCH_PROVIDER must be 'brave' or 'none'.")
         if self.image_generation_provider not in {"none", "gemini"}:
             raise ConfigError("IMAGE_GENERATION_PROVIDER must be none or gemini.")
+        if self.campaign_image_size not in {"1K", "2K", "4K"}:
+            raise ConfigError("CAMPAIGN_IMAGE_SIZE must be 1K, 2K or 4K (uppercase K).")
 
         if not self.database_url:
             name = "test.db" if self.app_env == AppEnv.TEST else f"{self.app_mode.value}.db"

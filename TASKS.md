@@ -55,3 +55,8 @@ Legend: [x] done and verified locally · [~] implemented, verified only with moc
       [!] Still needs: a real run with your `GROQ_API_KEY` to confirm strict schemas are accepted and to record real
       tokens per run in `docs/API_INTEGRATIONS.md`.
 - [x] Windows: text files read and written as UTF-8 (demo setup crashed on Windows before).
+- [~] Research-driven 5-day campaign generation (2026-11-01): Brave research (≤5 searches per campaign) → Groq
+      strategy (one call, exactly N days) → Groq captions and image prompts (one call) → one 2K Gemini image per
+      day (`gemini-nano-banana-2.1`, verified in Google's docs) composited with the real product photo; per-day
+      status, retries, restart recovery, budget checks, approve-all. 22 tests with mocked APIs. See
+      `docs/CAMPAIGN_GENERATION.md`. [!] Needs the live smoke tests listed there (no credentials yet).
