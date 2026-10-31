@@ -12,6 +12,7 @@ docs and tested against a mocked API, not yet run with real credentials. **Simul
 | Poojaloka storefront API (catalogue) | live (demo: snapshot) | Implemented; snapshot fetched for real on 2026-10-24 | nothing | free |
 | Public page fetch (`inspect_website`) | live | Implemented, mocked pages | permitted domains in Brand Brain | free |
 | Gemini image (AI backgrounds) | live, optional | Implemented | `IMAGE_GENERATION_PROVIDER=gemini` | ≈ $0.03 per image |
+| Gemini image, campaign creatives (`gemini-nano-banana-2.1`, 2K, google-genai SDK) | live, optional | Implemented; mocked tests only | `IMAGE_GENERATION_PROVIDER=gemini`, `GEMINI_API_KEY` | $0.0504 per 2K image, no free tier (see `docs/CAMPAIGN_GENERATION.md`) |
 | Instagram (Instagram Login) | live | Implemented, mocked Meta API | Meta app, professional account, public HTTPS | free API |
 | Facebook Pages | live | Implemented, mocked Graph API | same Meta app + Facebook Login for Business, a Page | free API |
 | Canva | — | Not integrated; no Canva API calls are made | — | — |
