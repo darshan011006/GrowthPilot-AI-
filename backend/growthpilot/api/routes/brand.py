@@ -87,13 +87,15 @@ class SiteScanIn(BaseModel):
 def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
     """Inspect a small set of public pages on the submitted domain and return a reviewable draft."""
     ctx.require_editor()
-    rate_limit(f"site-scan:{ctx.workspace.id}", 5, 3600)
     url = body.website.strip()
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     host = host_of(url)
     if not host:
         raise ApiError(400, "Enter a valid public website URL.", "validation")
+    # Keep limits scoped to each target so trying a different client website doesn't
+    # consume the workspace's allowance for every other site.
+    rate_limit(f"site-scan:{ctx.workspace.id}:{host}", 5, 3600)
     # Only fetch same-host pages, and keep the crawl deliberately small.
     candidates = [url]
     pages = []
