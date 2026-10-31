@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "content_id": 15,
+  "platform": "instagram",
+  "format": "carousel",
+  "objective": "saves_per_reach: Create a seven-day Deepavali campaign for Poojaloka's diyas, brass items and pooja essentials across Instagram, Facebook, Pinterest and Threads, aimed at families in Bengaluru.",
+  "audience": "Families in Bengaluru and across Karnataka preparing for daily pooja and festivals; people setting up a first home altar. (Suggested from the catalogue and site; confirm with real customer data.)",
+  "festival": null,
+  "angle": "product_spotlight",
+  "image_policy": "text_only",
+  "image_refs": [],
+  "headline": "Meet our Sree Sugandi Sambrani Agarbatti",
+  "tagline": "From the Pooja Essentials range at Poojaloka",
+  "cta": "Tap the link in bio",
+  "required_text": [
+    "Meet our Sree Sugandi Sambrani Agarbatti",
+    "From the Pooja Essentials range at Poojaloka",
+    "Tap the link in bio",
+    "Poojaloka"
+  ],
+  "claims_allowed": [
+    {
+      "text": "Sree Sugandi Sambrani Agarbatti 250G",
+      "product_sku": "sree-sugandi-sambrani-agarbatti-250g-8908004012789",
+      "field": "name",
+      "value": "Sree Sugandi Sambrani Agarbatti 250G"
+    },
+    {
+      "text": "Category: Pooja Essentials",
+      "product_sku": "sree-sugandi-sambrani-agarbatti-250g-8908004012789",
+      "field": "category",
+      "value": "Pooja Essentials"
+    }
+  ],
+  "banned": [
+    "prices, MRP, discounts, offers, sale or coupon wording",
+    "stock, delivery or availability promises",
+    "purity, origin, authenticity, health or spiritual-benefit claims",
+    "deity imagery, religious figures, mantras or Sanskrit text",
+    "stock photos presented as the product",
+    "competitor names, text, layouts or imagery",
+    "any text other than required_text",
+    "“guaranteed blessings”",
+    "“miracle”",
+    "“100% pure”",
+    "“lowest price in India”",
+    "“Since 1980” (restricted: needs owner sign-off)",
+    "“Trusted by 10,000+ Devotees” (restricted: needs owner sign-off)",
+    "“Fast & Safe Delivery” (restricted: needs owner sign-off)",
+    "“Own delivery in Bengaluru” (restricted: needs owner sign-off)",
+    "“curated by artisans” (restricted: needs owner sign-off)"
+  ],
+  "style": {
+    "composition": "typographic",
+    "layout": "split_blocks",
+    "palette": "fbf3e7-2b1810-6b1420",
+    "colors": [
+      "#FBF3E7",
+      "#2B1810",
+      "#6B1420"
+    ],
+    "mood": "warm, respectful and uncluttered"
+  },
+  "needs_human_review": false,
+  "canva_query": "Design a 1080×1350 (4:5 portrait) Instagram carousel cover for Poojaloka. Layout: two stacked colour blocks: headline above, tagline and CTA below. Colours #FBF3E7, #2B1810, #6B1420; mood: warm, respectful and uncluttered. Text, exactly as written: \"Meet our Sree Sugandi Sambrani Agarbatti\", \"From the Pooja Essentials range at Poojaloka\", \"Tap the link in bio\", \"Poojaloka\". Use exactly the quoted text and add no other words, numbers, prices, offers or claims. Typographic only: no product photos, stock photos, deities, religious figures, mantras or Sanskrit text.",
+  "signals": {
+    "trend_ids": [
+      8,
+      9
+    ],
+    "competitor_insight_ids": [
+      5
+    ],
+    "reason": "text only slot in the weekly mix; angle product spotlight; 2 supporting research signal(s); general carousel pattern seen in 1 competitor reference(s), not copied; Festival guide posts averaged 4.8% engagement (n=8); demo data"
+  },
+  "data_issues": [
+    {
+      "code": "stock_photo_only",
+      "message": "Sree Sugandi Sambrani Agarbatti 250G: the store only lists a generic stock image, which is never shown as the product.",
+      "needs_review": false
+    },
+    {
+      "code": "price_not_verified",
+      "message": "Sree Sugandi Sambrani Agarbatti 250G: the price isn't fresh or is flagged, so no price claim is allowed.",
+      "needs_review": false
+    },
+    {
+      "code": "festival_date_missing",
+      "message": "No verified festival date within 21 days, so this is an evergreen post (no date in the brand's festival calendar for Krishna Janmashtami, Navaratri, Deepavali; Diwali: built-in planning calendar says 08 Nov 2026 but marks it unconfirmed).",
+      "needs_review": false
+    }
+  ]
+}

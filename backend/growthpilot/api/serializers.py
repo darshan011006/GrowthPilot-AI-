@@ -165,7 +165,7 @@ def content(i: ContentItem, tz: ZoneInfo, full: bool = False) -> dict:
         "hook", "caption", "hashtags", "cta", "image_brief", "carousel_outline", "video_script", "product_ids",
         "evidence_ids", "asset_id", "slide_asset_ids", "validation", "status", "connection_id", "generated_by",
         "rationale", "version", "approved_version", "approved_by", "publish_authorized", "review_note", "external_id",
-        "external_url", "publish_verified", "last_error", "is_synthetic", "approved_hash")}
+        "external_url", "publish_verified", "last_error", "is_synthetic", "approved_hash", "creative_brief")}
     d |= {"planned_at": dt(i.planned_at), "scheduled_at": dt(i.scheduled_at), "published_at": dt(i.published_at),
           "approved_at": dt(i.approved_at), "updated_at": dt(i.updated_at),
           "planned_local": local(i.planned_at, tz), "scheduled_local": local(i.scheduled_at, tz),

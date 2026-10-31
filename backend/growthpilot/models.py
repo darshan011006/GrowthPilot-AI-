@@ -594,6 +594,8 @@ class ContentItem(Base):
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"))
     slide_asset_ids: Mapped[list] = mapped_column(JSON, default=list)  # carousel slides after the cover
     validation: Mapped[dict | None] = mapped_column(JSON)  # last validation report
+    # Typed CreativeBrief (agent.briefs, schema_version 1.0). Part of the versioned, approval-bound snapshot.
+    creative_brief: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(20), default=ContentStatus.DRAFT, index=True)
     planned_at: Mapped[datetime | None] = mapped_column(DateTime)  # calendar slot (UTC)
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)  # UTC, set when scheduled

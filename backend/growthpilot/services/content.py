@@ -37,7 +37,8 @@ from .errors import PermissionDenied, WorkflowError
 from .validation import final_caption, validate_item
 
 EDITABLE_FIELDS = ("title", "hook", "caption", "hashtags", "cta", "image_brief", "carousel_outline", "video_script",
-                   "content_type", "pillar", "product_ids", "planned_at", "asset_id", "slide_asset_ids")
+                   "content_type", "pillar", "product_ids", "planned_at", "asset_id", "slide_asset_ids",
+                   "creative_brief")
 SNAPSHOT_FIELDS = ("title", "hook", "caption", "hashtags", "cta", "image_brief", "carousel_outline", "video_script",
                    "content_type", "pillar", "product_ids", "asset_id", "slide_asset_ids")
 BACK_TO_DRAFT = {ContentStatus.APPROVED, ContentStatus.SCHEDULED, ContentStatus.FAILED,
@@ -62,7 +63,10 @@ def normalise_hashtags(raw: list[str] | str) -> list[str]:
 
 
 def snapshot(item: ContentItem) -> dict:
-    return {f: getattr(item, f) for f in SNAPSHOT_FIELDS}
+    snap = {f: getattr(item, f) for f in SNAPSHOT_FIELDS}
+    if item.creative_brief is not None:  # left out when absent, so approvals made before briefs keep their hash
+        snap["creative_brief"] = item.creative_brief
+    return snap
 
 
 def add_revision(db: Session, item: ContentItem, source: str, user_id: int | None, note: str = "") -> None:

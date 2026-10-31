@@ -51,30 +51,36 @@ class ContentIdsIn(ToolInput):
     content_ids: list[int] = Field(default_factory=list, description="Empty = the posts created in this run.")
 
 
-@tool("create_content_brief", "Write the creative brief for each calendar slot: image brief, carousel outline (for "
-      "carousels) and rationale, using only catalogue facts and the brand's own published content.", ContentIdsIn,
+class BriefIn(ContentIdsIn):
+    repeat_window: int | None = Field(default=None, ge=1, le=30, description="How many recent posts to avoid "
+                                      "repeating (angle, headline, tagline, layout, palette). Default 8.")
+
+
+@tool("create_content_brief", "Plan the weekly mix (2 text-only, 2 image-based, 1 combination "
+      "where trusted photos exist), then write one strictly validated CreativeBrief JSON per post: image policy "
+      "(real store photos or linked team uploads only), headline/tagline/CTA, claims traceable to product data, "
+      "verified festivals within 21 days, style, no-repeat checks, prior QA feedback and a Canva-ready query. "
+      "Saved on the content item as a new version (any approval is cleared). Never publishes.", BriefIn,
       Permission.DRAFT, role=C, effects=(Effect.LOCAL_WRITE, Effect.COST))
-def create_content_brief(ctx: ToolContext, inp: ContentIdsIn) -> ToolResult:
+def create_content_brief(ctx: ToolContext, inp: BriefIn) -> ToolResult:
+    from .briefing import write_briefs
+
     gen = generator(ctx)
-    b = brief(ctx)
-    drafts = dict(ctx.state.get("drafts", {}))
-    tokens, done = 0, []
-    rows = items(ctx, inp.content_ids)
-    counts = _pillar_counts(rows)
-    for idx, item in enumerate(rows):
-        if item.status not in EDITABLE:
-            continue
-        prods = [product_dict(p) for p in products(ctx, item.product_ids)] if item.product_ids else []
-        out, t = gen.slot_content(b, _slot(ctx, item, idx, counts[item.id]), prods)
-        tokens += t
-        drafts[str(item.id)] = out.model_dump()
-        apply(ctx, item, {"image_brief": out.image_brief, "carousel_outline": out.carousel_outline,
-                          "title": out.title[:255]}, "Creative brief")
-        item.rationale = out.rationale[:2000]
-        done.append(item.id)
-    ctx.remember("drafts", drafts)
-    return ToolResult(f"Briefs written for {len(done)} item(s).", {"content_ids": done, "generator": gen.name},
-                      is_mock=gen.is_mock, tokens=tokens)
+    rows = [i for i in items(ctx, inp.content_ids) if i.status in EDITABLE]
+    if not rows:
+        raise ToolError("No editable posts to brief.")
+    res = write_briefs(ctx, rows, gen, inp.repeat_window, apply)
+    mix = res["mix"]
+    review = [r["content_id"] for r in res["briefs"] if r["needs_human_review"]]
+    summary = (f"Briefs for {len(res['briefs'])} post(s): {mix['text_only']} text-only, {mix['must_use_images']} "
+               f"must use a real photo, {mix['may_use_images']} may use a photo after review; {len(review)} need "
+               f"human review; {len(res['data_issues'])} data issue(s)"
+               + (f"; {res['fallbacks']} fell back to a flagged evergreen brief" if res["fallbacks"] else "") + ".")
+    return ToolResult(summary, {"content_ids": [r["content_id"] for r in res["briefs"]], "generator": gen.name,
+                                "briefs": res["briefs"], "mix": mix, "needs_review": review,
+                                "data_issues": res["data_issues"], "retries": res["retries"],
+                                "fallbacks": res["fallbacks"], "repeat_window": res["repeat_window"]},
+                      is_mock=gen.is_mock, tokens=res["tokens"])
 
 
 class CaptionIn(ToolInput):
