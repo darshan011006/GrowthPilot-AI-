@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useCan } from "@/components/auth";
+import { useAuth, useCan } from "@/components/auth";
 import { FreshnessBadge, ImageKindBadge, PLATFORM_ORDER, PlatformChip, SyntheticBadge } from "@/components/domain";
 import { Alert, Badge, Button, Card, Empty, Field, Input, ListInput, Loading, Modal, PageHeader, Tabs, Textarea, useAction, useApi } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -484,8 +484,10 @@ function Festivals({ brand }: { brand: Brand }) {
 export default function BrandPage() {
   // This page only renders client-side (after the session check), so reading the hash here is safe.
   const [tab, setTab] = useState<Tab>(() => (typeof window !== "undefined" && window.location.hash === "#products" ? "products" : "profile"));
+  const { refresh: refreshAuth } = useAuth();
   const { data, loading, error, reload } = useApi<{ brand: Brand | null; personas: Persona[]; products: Product[] }>("/api/brand");
   const assets = useApi<Asset[]>("/api/assets?source=upload,catalogue,placeholder");
+  const brandSaved = () => { void reload(); void refreshAuth(); };
   if (loading && !data) return <Loading />;
   if (error) return <Alert tone="bad">{error}</Alert>;
   const brand = data?.brand ?? null;
@@ -494,7 +496,7 @@ export default function BrandPage() {
       <PageHeader title="Brand Brain" subtitle="Everything the agent knows about the brand. Agent runs load this first (as a frozen snapshot), and verification checks every post against it." actions={<>
         {brand && brand.colors.slice(0, 5).map((c) => <span key={c} title={c} className="h-6 w-6 rounded-full border border-line" style={{ background: c }} />)}
         {brand?.is_synthetic && <SyntheticBadge label="Fictional demo brand" />}</>} />
-      <div className="mb-4"><WebsiteSetup brand={brand} onSaved={reload} /></div>
+      <div className="mb-4"><WebsiteSetup brand={brand} onSaved={brandSaved} /></div>
       {brand && brand.profile_sources?.length > 0 && tab === "profile" && (
         <details className="mb-4 rounded-xl border border-line bg-panel p-3 text-sm">
           <summary className="cursor-pointer font-semibold">Where this profile came from ({brand.profile_sources.length})</summary>
@@ -509,7 +511,7 @@ export default function BrandPage() {
       ]} />
       {!brand && tab !== "profile" && tab !== "claims" ? <Empty title="Create the brand profile first" /> : (
         <>
-          {(tab === "profile" || tab === "claims" || tab === "marketing") && <BrandForm key={`${brand?.id ?? "new"}-${tab}`} brand={brand} section={tab} onSaved={reload} />}
+          {(tab === "profile" || tab === "claims" || tab === "marketing") && <BrandForm key={`${brand?.id ?? "new"}-${tab}`} brand={brand} section={tab} onSaved={brandSaved} />}
           {tab === "festivals" && <Festivals brand={brand!} />}
           {tab === "products" && <CatalogueStatus brand={brand!} products={data!.products} onChange={reload} />}
           {tab === "personas" && <PersonaEditor personas={data!.personas} onChange={reload} />}
