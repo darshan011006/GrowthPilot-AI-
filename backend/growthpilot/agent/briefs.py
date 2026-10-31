@@ -224,6 +224,54 @@ class CreativeBrief(_Strict):
         return self
 
 
+def to_canva_handoff(b: CreativeBrief) -> dict:
+    """Serialize the canonical agent brief to the stable planner→Canva payload.
+
+    Keep canonical schema/version and evidence intact in ``canonical`` while exposing the
+    field names expected by the poster pipeline at the top level. This is a pure adapter:
+    it never calls Canva and retains actual asset IDs.
+    """
+    format_map = {"single_image": "instagram_post", "carousel": "carousel_slide"}
+    objective = "festival" if b.festival else (
+        "offer" if "offer" in b.objective.casefold() else
+        "education" if any(x in b.angle for x in ("know_how", "material_focus")) else
+        "engagement" if b.angle == "brand_promise" else "awareness"
+    )
+    return {
+        "schema_version": 1,
+        "content_id": b.content_id,
+        "platform": b.platform,
+        "format": format_map[b.format],
+        "objective": objective,
+        "audience": b.audience,
+        "festival": ({"name": b.festival.name, "date": b.festival.start.isoformat(),
+                      "end_date": b.festival.end.isoformat(), "source": b.festival.source}
+                     if b.festival else None),
+        "angle": b.angle,
+        "image_policy": b.image_policy,
+        "image_refs": [r.model_dump(mode="json") | {"trust": (
+            "uploaded" if r.source == "uploaded" else
+            "real_match" if b.image_policy == "must_use_images" else "unknown")}
+            for r in b.image_refs],
+        "headline": b.headline,
+        "tagline": b.tagline,
+        "cta": b.cta,
+        "required_text": list(b.required_text),
+        "claims_allowed": [c.text for c in b.claims_allowed],
+        "claim_evidence": [c.model_dump(mode="json") for c in b.claims_allowed],
+        "banned": list(b.banned),
+        "style": {"mood": b.style.mood, "palette": list(b.style.colors),
+                  "layout_hint": b.style.layout, "composition": b.style.composition,
+                  "palette_name": b.style.palette},
+        "needs_human_review": b.needs_human_review or any(i.needs_review for i in b.data_issues),
+        "canva_query": b.canva_query,
+        "signals": {"trend_ids": list(b.signals.trend_ids),
+                    "competitor_insight_ids": list(b.signals.competitor_insight_ids),
+                    "reasoning": b.signals.reason},
+        "canonical": b.model_dump(mode="json"),
+    }
+
+
 def structural_errors(b: CreativeBrief, brand_word: str | None = "Poojaloka") -> list[str]:
     """Rules that need only the brief itself. ``brand_word=None`` skips the brand-name rule (the schema
     validator doesn't know the brand; ``validate_brief`` and ``check_brief`` apply it)."""
@@ -287,9 +335,12 @@ class ProductFacts:
     sku: str
     name: str
     category: str
+    description: str = ""
     materials: list[str] = field(default_factory=list)
     dimensions: str = ""
     price: Decimal | None = None
+    mrp: Decimal | None = None
+    stock: int | None = None
     price_ok: bool = False  # fresh data and no price-quality flags
     promotable: bool = True
     religious: bool = False

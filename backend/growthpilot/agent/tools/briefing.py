@@ -46,8 +46,9 @@ def product_facts(p: Product) -> B.ProductFacts:
              "none": "none"}.get(p.image_kind or "", "unknown")
     if trust == "none" and p.image_asset_id:
         trust = "unknown"  # a photo is attached but nothing says where it came from
-    return B.ProductFacts(sku=p.sku, name=p.name, category=p.category or "", materials=list(p.materials or [])[:3],
-                          dimensions=p.dimensions or "", price=p.price, price_ok=price_ok, promotable=ok,
+    return B.ProductFacts(sku=p.sku, name=p.name, category=p.category or "", description=p.description or "",
+                          materials=list(p.materials or [])[:3], dimensions=p.dimensions or "", price=p.price,
+                          mrp=p.mrp, stock=p.stock, price_ok=price_ok, promotable=ok,
                           religious=bool(B.religious_terms(f"{p.name} {p.category}")), trust=trust,
                           photo_asset_id=p.image_asset_id)
 
