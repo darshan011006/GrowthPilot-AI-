@@ -13,6 +13,7 @@ import re
 
 from sqlalchemy.orm import Session
 
+from ..catalogue import usable_for_brand, usable_products
 from ..config import get_settings
 from ..creative import imagegen
 from ..creative.render import CreativeInput, Palette, render
@@ -101,8 +102,7 @@ def render_for_item(db: Session, item: ContentItem, *, platform: str | None = No
     brand = db.get(Brand, item.brand_id)
     sp = SPECS.get(platform or item.platform) or SPECS["instagram"]
     fmt = sp.render
-    prods = [db.get(Product, pid) for pid in item.product_ids or []]
-    prods = [p for p in prods if p is not None and p.workspace_id == item.workspace_id]
+    prods = [p for p in (db.get(Product, pid) for pid in item.product_ids or []) if usable_for_brand(brand, p)]
     p = prods[0] if prods else None
     tpl = template or ("carousel_slide" if slide else template_for(item))
     photo = _photo_bytes(db, p) if p else None
@@ -124,7 +124,7 @@ def render_for_item(db: Session, item: ContentItem, *, platform: str | None = No
     cta = _clean(item.cta, 34) if item.cta and len(item.cta) <= 34 else ""
 
     on_image = "\n".join(x for x in [head, sub, *lines, price, cta] if x)
-    catalogue = list(db.query(Product).filter(Product.brand_id == brand.id))
+    catalogue = usable_products(db, brand)
     claim_checks = [c.__dict__ for c in check_product_claims(on_image, brand, prods, catalogue)]
     claim_fail = [c for c in claim_checks if c["status"] == "fail"]
     if claim_fail:

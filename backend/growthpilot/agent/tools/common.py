@@ -5,6 +5,7 @@ import json
 
 from sqlalchemy import select
 
+from ...catalogue import foreign_store_product
 from ...llm import get_llm
 from ...models import Brand, ContentItem, Experiment, Persona, Product, Recommendation
 from ..generation import Generator, get_generator
@@ -86,7 +87,8 @@ def products(ctx: ToolContext, ids: list[int] | None = None, category: str | Non
         q = q.where(Product.id.in_(ids))
     elif category:
         q = q.where(Product.category.ilike(f"%{category}%"))
-    return list(ctx.db.execute(q.order_by(Product.id)).scalars())
+    b = brand(ctx)
+    return [p for p in ctx.db.execute(q.order_by(Product.id)).scalars() if not foreign_store_product(b, p)]
 
 
 def promotable(p: Product) -> tuple[bool, str]:
