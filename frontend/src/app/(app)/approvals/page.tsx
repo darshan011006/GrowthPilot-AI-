@@ -51,6 +51,8 @@ function VersionPanel({ item, mode, liveEnabled, onDone }: { item: ContentItem; 
   const v = item.validation;
   const warnings = v ? [...v.product_claims, ...v.brand, ...v.platform].filter((c) => c.status === "warn") : [];
   const failures = v?.failures ?? 0;
+  const isOption = item.variant_label.startsWith("option-");
+  const optionNumber = isOption ? item.variant_label.slice("option-".length) : "";
   const hasLiveTarget = (item.target_connections || []).some((c) => c.adapter_info?.external);
   const approve = async () => {
     if (await act.run(() => api.post(`/api/content/${item.id}/approve`, { version: item.version, acknowledge_warnings: ack, authorize_publish: authorize }))) onDone();
@@ -58,12 +60,15 @@ function VersionPanel({ item, mode, liveEnabled, onDone }: { item: ContentItem; 
   const changes = async () => {
     if (await act.run(() => api.post(`/api/content/${item.id}/request-changes`, { note }))) onDone();
   };
+  const chooseOption = async () => {
+    if (await act.run(() => api.post(`/api/content/${item.id}/choose-option`))) onDone();
+  };
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
       <PlatformPreview platform={item.platform} assets={item.assets || []} caption={item.final_caption || ""} account={item.brand_name || state?.workspace?.name?.replace(/ \(demo\)$/, "") || "brand"} type={item.content_type} title={item.hook} limit={item.platform_spec?.caption_max} />
       <div className="min-w-0 space-y-3">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <PlatformChip platform={item.platform} withLabel /><Badge>v{item.version}</Badge><Badge>{item.content_type}</Badge>
+          <PlatformChip platform={item.platform} withLabel />{isOption && <Badge tone="accent">Option {optionNumber}</Badge>}<Badge>v{item.version}</Badge><Badge>{item.content_type}</Badge>
           <Link href={`/content/${item.id}`} className="text-accent hover:underline">Open in Creative Studio →</Link>
         </div>
         <div className="grid gap-3 text-sm md:grid-cols-2">
@@ -78,6 +83,7 @@ function VersionPanel({ item, mode, liveEnabled, onDone }: { item: ContentItem; 
         )}
         {can.own ? (
           <div className="space-y-2">
+            {isOption && <Alert tone="info" title="Choose one post option">Selecting this option cancels its sibling options. You can then approve this post separately.</Alert>}
             {warnings.length > 0 && (
               <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-1" />
                 I&apos;ve reviewed the {warnings.length} warning(s) above.</label>
@@ -88,6 +94,7 @@ function VersionPanel({ item, mode, liveEnabled, onDone }: { item: ContentItem; 
             )}
             {act.error && <Alert tone="bad">{act.error}</Alert>}
             <div className="flex flex-wrap gap-2">
+              {isOption && <Button variant="primary" busy={act.busy} onClick={chooseOption}>Choose Option {optionNumber}</Button>}
               <Button variant="ok" busy={act.busy} disabled={failures > 0 || (warnings.length > 0 && !ack)} onClick={approve}>Approve {item.platform} v{item.version}</Button>
               <Button onClick={() => setShowChanges(!showChanges)}>Request changes</Button>
             </div>

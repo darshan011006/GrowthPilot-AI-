@@ -186,10 +186,9 @@ export default function RunPage() {
   if (!run) return <Loading />;
   const out = run.outputs as Record<string, unknown>;
   const budget = run.cost_budget_usd + (run.approved_extra_usd || 0);
-  const costPct = budget ? Math.min(100, (run.cost_usd / budget) * 100) : 0;
-  const stepPct = Math.min(100, (run.step_count / run.max_steps) * 100);
   const mockSteps = steps.filter((s) => s.is_mock).length;
   const shown = roleFilter ? steps.filter((s) => s.role === roleFilter && s.phase !== "delegate") : steps;
+  const latestStep = steps[steps.length - 1];
   const assetIds = (Array.isArray(out.asset_ids) ? out.asset_ids : []) as number[];
   const refresh = () => { last.current = 0; setSteps([]); setNonce((n) => n + 1); };
   const post = async (path: string) => { if (await act.run(() => api.post(path))) refresh(); };
@@ -213,21 +212,32 @@ export default function RunPage() {
       {act.error && <div className="mb-3"><Alert tone="bad">{act.error}</Alert></div>}
       {typeof out.awaiting_budget_request === "number" && <BudgetRequest id={out.awaiting_budget_request} onDone={refresh} />}
 
-      <div className="mb-4 grid gap-3 md:grid-cols-4">
+      <div className="mb-4 grid gap-3 md:grid-cols-3">
         <Card><div className="text-xs font-semibold uppercase text-muted">Status</div><div className="mt-1 flex items-center gap-2"><RunStatusBadge status={run.status} />{ACTIVE.includes(run.status) && <CircleDot className="h-4 w-4 animate-pulse text-info" />}</div>
-          {run.completion_reason && <div className="mt-1 text-xs text-muted">{run.completion_reason.replace(/_/g, " ")}</div>}
-          {run.recoveries > 0 && <div className="mt-1"><Badge tone="info">recovered {run.recoveries}×</Badge></div>}</Card>
-        <Card><div className="text-xs font-semibold uppercase text-muted">Tool steps</div><div className="mt-1 text-lg font-bold">{run.step_count} / {run.max_steps}</div>
-          <div className="mt-1 h-1.5 rounded bg-panel-2"><div className="h-1.5 rounded bg-accent transition-all" style={{ width: `${stepPct}%` }} /></div></Card>
+          {run.completion_reason && <div className="mt-1 text-xs text-muted">{run.completion_reason.replace(/_/g, " ")}</div>}</Card>
+        <Card><div className="text-xs font-semibold uppercase text-muted">Current action</div><div className="mt-1 text-sm font-semibold">{latestStep ? (latestStep.phase === "tool" && latestStep.tool ? ACTIVITY[latestStep.tool] || latestStep.tool : PHASE[latestStep.phase]?.label || latestStep.phase) : ACTIVE.includes(run.status) ? "Starting…" : "No activity yet"}</div>
+          {latestStep && <div className="mt-1 text-xs text-muted">{latestStep.message}</div>}</Card>
         <Card><div className="text-xs font-semibold uppercase text-muted">Provider cost (est.)</div><div className="mt-1 text-lg font-bold"><Money usd={run.cost_usd} /></div>
-          <div className="mt-1 h-1.5 rounded bg-panel-2"><div className={cx("h-1.5 rounded transition-all", costPct > 85 ? "bg-bad" : "bg-warm")} style={{ width: `${costPct}%` }} /></div>
-          <div className="mt-1 text-xs text-muted">of ${budget.toFixed(2)} run budget{run.planner === "demo-planner" && " · demo makes no paid calls"}</div></Card>
-        <Card><div className="text-xs font-semibold uppercase text-muted">Planner</div><div className="mt-1 text-sm font-semibold">{run.planner}</div>
-          <div className="text-xs text-muted">{fmtNum(run.tokens_used)} tokens · started {fmtDate(run.started_at, can.tz)}</div>
-          {mockSteps > 0 && <div className="mt-1"><Badge tone="demo">{mockSteps} step(s) used fixtures or simulations</Badge></div>}</Card>
+          <div className="mt-1 text-xs text-muted">of ${budget.toFixed(2)} budget</div></Card>
       </div>
 
-      <Card className="mb-4" title="Agent team" subtitle="The orchestrator delegates each phase to a specialist. Click one to filter the timeline.">
+      {run.outcome_summary && <div className="mb-4"><Alert tone={run.status === "completed" ? "ok" : run.status === "awaiting_approval" ? "warn" : "info"} title="Result">{run.outcome_summary}</Alert></div>}
+      {run.error && <div className="mb-4"><Alert tone="bad">{run.error}</Alert></div>}
+      {run.blockers?.length > 0 && <div className="mb-4"><Alert tone="warn" title="Needs attention">{run.blockers.map((b) => b.replace(/_/g, " ")).join(" · ")}</Alert></div>}
+      {(Array.isArray(out.awaiting_ids) && out.awaiting_ids.length > 0 || Array.isArray(out.scheduled_ids) && out.scheduled_ids.length > 0 || typeof out.campaign_id === "number") && (
+        <Card className="mb-4" title="Created">
+          <div className="flex flex-wrap gap-4 text-sm">
+            {typeof out.campaign_id === "number" && <Link className="text-accent hover:underline" href={`/campaigns/${out.campaign_id}`}>View campaign →</Link>}
+            {Array.isArray(out.awaiting_ids) && out.awaiting_ids.length > 0 && <Link className="text-accent hover:underline" href="/approvals">Review {out.awaiting_ids.length} post(s) →</Link>}
+            {Array.isArray(out.scheduled_ids) && out.scheduled_ids.length > 0 && <Link className="text-accent hover:underline" href="/calendar">View schedule →</Link>}
+          </div>
+        </Card>
+      )}
+
+      <details className="mb-4 rounded-xl border border-line bg-panel p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-ink">Show run details</summary>
+        <div className="mt-4 space-y-4">
+      <Card className="mb-4" title="Agent team" subtitle="Select a specialist to filter the activity list.">
         <div className="flex flex-wrap gap-2">
           {ROLE_ORDER.map((r) => (
             <button key={r} onClick={() => setRoleFilter(roleFilter === r ? "" : r)}
@@ -239,12 +249,6 @@ export default function RunPage() {
           {roleFilter && <Button size="sm" variant="ghost" onClick={() => setRoleFilter("")}>Show all</Button>}
         </div>
       </Card>
-
-      {run.outcome_summary && <div className="mb-4"><Alert tone={run.status === "completed" ? "ok" : run.status === "awaiting_approval" ? "warn" : "info"} title="Outcome">{run.outcome_summary}</Alert></div>}
-      {run.error && <div className="mb-4"><Alert tone="bad">{run.error}</Alert></div>}
-      {run.blockers?.length > 0 && (
-        <div className="mb-4"><Alert tone="warn" title="Blocked items (the agent continued without them where it could)">{run.blockers.map((b) => b.replace(/_/g, " ")).join(" · ")}</Alert></div>
-      )}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Card title="Live activity" subtitle="Each step is persisted by the backend as it happens. Decisions and re-plans are highlighted; open Details for the tool, inputs, result, evidence and cost.">
@@ -298,6 +302,9 @@ export default function RunPage() {
           </Card>
         </div>
       </div>
+        <div className="text-xs text-muted">{run.planner} · {run.step_count}/{run.max_steps} steps · {fmtNum(run.tokens_used)} tokens · started {fmtDate(run.started_at, can.tz)}{mockSteps > 0 ? ` · ${mockSteps} simulated step(s)` : ""}{run.recoveries > 0 ? ` · recovered ${run.recoveries}×` : ""}</div>
+        </div>
+      </details>
     </div>
   );
 }

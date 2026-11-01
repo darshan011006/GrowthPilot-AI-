@@ -293,6 +293,7 @@ def write_briefs(ctx: ToolContext, rows: list[ContentItem], gen, repeat_window: 
                 "content_type": item.content_type, "variant": item.variant_label, "platform": item.platform,
                 "occasion": params.get("occasion"), "festival": ctx.state.get("festival"),
                 "pillar_index": pillar_seen.get(item.pillar, 0),
+                "option_count": params.get("option_count", 1),
                 "article": articles[idx % len(articles)] if articles else None}
         gen_out, t = gen.slot_content(_gen_brief(ctx), slot, prods)
         tokens += t
@@ -352,7 +353,8 @@ def write_briefs(ctx: ToolContext, rows: list[ContentItem], gen, repeat_window: 
         retries += len(outcome.attempts)
         fallbacks += int(outcome.fallback)
         data = brief.model_dump(mode="json")
-        apply(ctx, item, {"creative_brief": data, "image_brief": B.image_brief_text(brief),
+        apply(ctx, item, {"creative_brief": data, "image_brief": (gen_out.image_brief if ctx.settings.is_live
+                                                                else B.image_brief_text(brief)),
                           "carousel_outline": gen_out.carousel_outline, "title": gen_out.title[:255],
                           "product_ids": [p.id] if p else list(item.product_ids or [])},
               f"Creative brief v{B.SCHEMA_VERSION}: {brief.image_policy}, {brief.angle}"

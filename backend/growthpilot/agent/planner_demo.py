@@ -9,6 +9,7 @@ and can resume after a crash without redoing completed steps.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -63,7 +64,8 @@ def initial_plan(intent: str, params: dict, goal: str) -> list[dict]:
              {"days": params.get("days", 7), "occasion": occ, "category": cat}),
             ("create_content_brief", "Write creative briefs from catalogue facts."),
             ("generate_caption", "Write hooks, captions, hashtags and CTAs."),
-            ("generate_creative_asset", "Render the posters and carousel slides as real image files."),
+            ("generate_creative_asset", "Render posters and carousel slides as real image files; use Gemini for an AI background when requested.",
+             {"ai_background": params.get("ai_background", False)}),
             ("verify_product_facts", "Check every claim in captions against the catalogue.", {"scope": "content"}),
             ("validate_creative", "Check brand rules, platform rules and image quality."),
             ("create_platform_variant", "Adapt each post for the other channels in the plan."),
@@ -109,6 +111,17 @@ class DemoPlanner:
 
     def start(self, ctx: ToolContext, intent: str, params: dict) -> tuple[list[dict], str]:
         plan = initial_plan(intent, params, ctx.run.goal)
+        use_ai_background = ctx.settings.is_live
+        for step in plan:
+            if step["tool"] == "estimate_campaign_cost":
+                step["input"]["ai_backgrounds"] = use_ai_background
+            elif step["tool"] == "prepare_schedule" and not step["input"].get("commit"):
+                step["input"]["option_count"] = params.get("option_count", 1)
+                if params.get("content_type"):
+                    step["input"]["content_type"] = params["content_type"]
+            elif step["tool"] == "generate_creative_asset":
+                step["input"]["ai_background"] = use_ai_background
+                step["input"]["full_gemini_image"] = use_ai_background
         roles = []
         for s in plan:
             label = ROLE_LABELS[Role(s["role"])]

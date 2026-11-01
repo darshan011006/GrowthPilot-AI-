@@ -17,6 +17,13 @@ def get_analytics(campaign_id: int | None = None, ctx: Ctx = Depends(get_ctx)):
     return analytics.summary(ctx.db, ctx.workspace.id, campaign_id)
 
 
+@router.get("/instagram-account")
+def instagram_account(refresh: bool = False, ctx: Ctx = Depends(get_ctx)):
+    if refresh:
+        rate_limit(f"ig-account:{ctx.workspace.id}", 12, 3600)
+    return analytics.instagram_account(ctx.db, ctx.workspace.id, force=refresh)
+
+
 @router.post("/collect")
 def collect(ctx: Ctx = Depends(get_ctx)):
     ctx.require_editor()

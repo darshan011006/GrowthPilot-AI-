@@ -63,7 +63,20 @@ def parse_goal(goal: str) -> tuple[str, dict]:
             days = 7
         elif "fortnight" in g or "two weeks" in g:
             days = 14
+        elif re.search(r"\b(?:single|one|1)\b[\w\s-]{0,100}\bposts?\b", g):
+            # A request for one post should not silently expand to the default week.
+            days = 1
     platforms = _platforms(g)
+    option_count = 1
+    explicit_option = re.search(
+        r"\b(?P<count>\d+|one|two|three|four|five)\b"
+        r"(?:\s+(?:different|selectable|alternative|distinct|separate|post|image|caption|content|creative|and)){0,5}"
+        r"\s+options?\b", g)
+    if explicit_option:
+        raw_count = explicit_option.group("count")
+        option_count = int(raw_count) if raw_count.isdigit() else NUMBER_WORDS[raw_count]
+    elif re.search(r"\b(?:multiple|several)\b(?:\s+[\w-]+){0,3}\s+options?\b|\boptions?\s+to\s+choose\b", g):
+        option_count = 3
     params = {
         "days": max(1, min(days, 14)),
         "platform": platforms[0] if platforms else "instagram",
@@ -72,5 +85,8 @@ def parse_goal(goal: str) -> tuple[str, dict]:
         "occasion": next((name for word, name in OCCASIONS.items() if word in g), None),
         "geography": next((("Bengaluru" if c in ("bengaluru", "bangalore") else "Mysuru" if c in ("mysuru", "mysore")
                             else c.title()) for c in CITIES if c in g), None),
+        "ai_background": bool(re.search(r"\b(?:gemini|ai[- ]generated background|ai background)\b", g)),
+        "content_type": "post" if re.search(r"\b(?:static(?:\s+image)?|single[- ]image|not\s+(?:a\s+)?carousel|no\s+carousel)\b", g) else None,
+        "option_count": max(1, min(option_count, 5)),
     }
     return intent, params

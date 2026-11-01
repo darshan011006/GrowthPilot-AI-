@@ -76,8 +76,10 @@ def brief_for(db, b: Brand, *, workspace_id: int, params: dict | None = None, st
 
 
 def brief(ctx: ToolContext) -> dict:
-    return brief_for(ctx.db, brand(ctx), workspace_id=ctx.workspace_id, params=ctx.state.get("params", {}),
-                     state=ctx.state)
+    result = brief_for(ctx.db, brand(ctx), workspace_id=ctx.workspace_id, params=ctx.state.get("params", {}),
+                       state=ctx.state)
+    result["user_request"] = ctx.run.goal
+    return result
 
 
 def products(ctx: ToolContext, ids: list[int] | None = None, category: str | None = None) -> list[Product]:

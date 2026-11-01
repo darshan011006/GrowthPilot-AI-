@@ -36,7 +36,13 @@ def tools(ctx: Ctx = Depends(get_ctx)):
 
 @router.get("/examples")
 def examples(ctx: Ctx = Depends(get_ctx)):
-    return EXAMPLES
+    return [
+        "Create one Instagram post with three different design options, following our Brand Brain and catalogue.",
+        "Create a seven-day campaign for our brand across Instagram and Facebook.",
+        "Research trends relevant to our brand and identify content opportunities.",
+        "Analyse public competitor content and identify topics they cover that we are missing.",
+        "Review recent campaign results and recommend the next experiment.",
+    ]
 
 
 @router.post("/runs")

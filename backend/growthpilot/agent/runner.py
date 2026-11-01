@@ -100,6 +100,10 @@ def create_run(db: Session, *, workspace_id: int, user_id: int | None, goal: str
     else:
         planner = DemoPlanner.name
     intent, params = parse_goal(goal)
+    # In live mode, image requests are Gemini-only. The image tool reports missing Gemini config instead of
+    # silently replacing the requested image with a local render.
+    params["ai_background"] = bool(s.is_live)
+    params["full_gemini_image"] = params["ai_background"]
     run = AgentRun(workspace_id=workspace_id, brand_id=brand_id, goal=goal.strip()[:4000], intent=intent,
                    planner=planner, status=RunStatus.QUEUED, max_steps=ws.agent_max_steps,
                    token_budget=ws.agent_token_budget, cost_budget_usd=ws.run_budget_usd, created_by=user_id,
@@ -197,8 +201,21 @@ class Runner:
             self.step("tool", str(exc), tool=action.tool, inp=action.input, status="error")
             return "error", None, str(exc)
         meta = {"role": tool.role.value, "effect": ",".join(e.value for e in tool.effects)}
+        raw_input = dict(action.input or {})
+        params = (self.run.state or {}).get("params", {})
+        # These are run-level defaults and must also apply to tools selected later by the live model planner.
+        if tool.name == "generate_creative_asset":
+            raw_input["ai_background"] = params.get("ai_background", raw_input.get("ai_background", False))
+            raw_input["full_gemini_image"] = params.get("full_gemini_image", raw_input.get("full_gemini_image", False))
+        elif tool.name == "estimate_campaign_cost":
+            raw_input["ai_backgrounds"] = params.get("ai_background", raw_input.get("ai_backgrounds", False))
+        elif tool.name == "prepare_schedule" and not raw_input.get("commit"):
+            raw_input["days"] = params.get("days", raw_input.get("days", 7))
+            raw_input["option_count"] = params.get("option_count", raw_input.get("option_count", 1))
+            if params.get("content_type"):
+                raw_input["content_type"] = params["content_type"]
         try:
-            inp = tool.input_model.model_validate(action.input or {})
+            inp = tool.input_model.model_validate(raw_input)
         except ValidationError as exc:
             msg = "Invalid tool input: " + "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors()[:5])
             self.step("tool", msg, tool=tool.name, inp=action.input, status="error", **meta)
@@ -277,6 +294,21 @@ class Runner:
                       + (" Demo mode uses the bundled catalogue snapshot, labelled fixtures and simulated platform "
                          "adapters; nothing leaves this machine." if self.ctx.settings.is_demo else ""))
             plan, note = self.planner.start(self.ctx, r.intent, (r.state or {}).get("params", {}))
+            params = (r.state or {}).get("params", {})
+            for planned in plan:
+                tool, inp = planned.get("tool"), planned.setdefault("input", {})
+                if tool == "create_campaign_plan":
+                    inp["days"] = params.get("days", inp.get("days", 7))
+                elif tool == "estimate_campaign_cost":
+                    inp["ai_backgrounds"] = params.get("ai_background", inp.get("ai_backgrounds", False))
+                elif tool == "prepare_schedule" and not inp.get("commit"):
+                    inp["days"] = params.get("days", inp.get("days", 7))
+                    inp["option_count"] = params.get("option_count", 1)
+                    if params.get("content_type"):
+                        inp["content_type"] = params["content_type"]
+                elif tool == "generate_creative_asset":
+                    inp["ai_background"] = params.get("ai_background", inp.get("ai_background", False))
+                    inp["full_gemini_image"] = params.get("full_gemini_image", inp.get("full_gemini_image", False))
             r.plan = plan
             self.step("plan", note + "\n" + "\n".join(
                 f"{i + 1}. [{ROLE_LABELS[Role(s.get('role', 'orchestrator'))]}] {s['tool']} — {s['purpose']}"
@@ -416,6 +448,7 @@ def execute_run(db: Session, run: AgentRun) -> AgentRun:
 def resume_run(db: Session, run: AgentRun, note: str) -> None:
     if run.status != RunStatus.AWAITING_APPROVAL:
         return
+    _exclude_approval_wait(run)
     runner = Runner(db, run)
     runner.planner.resume(runner.ctx, note)
     run.status = RunStatus.QUEUED
@@ -462,6 +495,7 @@ def decide_budget(db: Session, req: ApprovalRequest, approved: bool, user_id: in
                  target_type="approval_request", target_id=req.id, kind=req.kind, approved=approved)
     if run is None or run.status != RunStatus.AWAITING_APPROVAL:
         return
+    _exclude_approval_wait(run)
     runner = Runner(db, run)
     if approved:
         extra = float((run.state or {}).get("approved_extra_usd", 0.0)) + float(req.payload.get("needed_usd", 0.0))
@@ -476,6 +510,12 @@ def decide_budget(db: Session, req: ApprovalRequest, approved: bool, user_id: in
         runner.planner.on_budget(runner.ctx, False)
         run.status = RunStatus.QUEUED
         runner.step("approval", "Budget increase declined; the agent continues without the paid step where it can.")
+
+
+def _exclude_approval_wait(run: AgentRun) -> None:
+    """Time spent waiting for a person must not consume the execution deadline."""
+    if run.deadline_at and run.heartbeat_at:
+        run.deadline_at += max(utcnow() - run.heartbeat_at, timedelta())
 
 
 def recover_stale(db: Session) -> None:

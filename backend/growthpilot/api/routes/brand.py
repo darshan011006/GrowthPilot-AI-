@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -19,7 +20,7 @@ from ...config import get_settings
 from ...db import get_db
 from ...models import Asset, Brand, Persona, Product, utcnow
 from ...platforms import ORDER
-from ...research.net import domain_allowed, host_of
+from ...research.net import BlockedURL, check_url, domain_allowed, host_of
 from ...research.web import FetchError, fetch_page
 from ...services import assets as asset_service
 from ...services.errors import WorkflowError
@@ -244,7 +245,7 @@ def scan_website(body: SiteScanIn, ctx: Ctx = Depends(get_ctx)):
 
 
 class ProductImportIn(BaseModel):
-    website: str = Field(min_length=8, max_length=255)
+    website: str | None = Field(default=None, max_length=255)
     products: list[dict] = Field(default_factory=list, max_length=50)
 
 
@@ -254,19 +255,35 @@ def import_onboarding_products(body: ProductImportIn, ctx: Ctx = Depends(get_ctx
     ctx.require_editor()
     rate_limit(f"product-import:{ctx.workspace.id}", 10, 3600)
     b = current_brand(ctx)
-    website_host = host_of(body.website).removeprefix("www.")
+    website_url = (body.website or "").strip()
+    if website_url and not website_url.startswith(("http://", "https://")):
+        website_url = "https://" + website_url
+    website_host = host_of(website_url).removeprefix("www.")
     if not website_host:
-        raise ApiError(400, "Enter a valid website before importing products.", "validation")
+        website_host = next((host_of(str(raw.get("source_url") or raw.get("product_url") or "")).removeprefix("www.")
+                             for raw in body.products if host_of(str(raw.get("source_url") or raw.get("product_url") or ""))), "")
     created = updated = photos_downloaded = 0
     warnings = []
     for raw in body.products:
         name = str(raw.get("name") or "").strip()[:160]
-        source_url = str(raw.get("source_url") or "")
-        if not name or not domain_allowed(host_of(source_url).removeprefix("www."), [website_host]):
-            warnings.append("Skipped a product without a valid same-website source.")
+        source_url = str(raw.get("source_url") or "").strip()
+        if not name:
+            warnings.append("Skipped a product without a name.")
             continue
+        if source_url:
+            if not website_host:
+                website_host = host_of(source_url).removeprefix("www.")
+            if not domain_allowed(host_of(source_url).removeprefix("www."), [website_host]):
+                warnings.append(f"{name}: product was skipped because its source is outside the brand website.")
+                continue
+            try:
+                check_url(source_url, allowed_domains=[website_host])
+            except BlockedURL:
+                warnings.append(f"{name}: product URL was skipped because it is not a safe public HTTPS URL.")
+                continue
         source_sku = str(raw.get("sku") or "").strip()[:64]
-        source_ref = f"web:{hashlib.sha256(f'{source_url}:{source_sku}:{name.lower()}'.encode()).hexdigest()}"
+        ref_kind = "web" if source_url else "csv"
+        source_ref = f"{ref_kind}:{hashlib.sha256(f'{source_url}:{source_sku}:{name.lower()}'.encode()).hexdigest()}"
         digest = hashlib.sha256(f"{website_host}:{source_url}:{source_sku}:{name.lower()}".encode()).hexdigest()[:16]
         sku = f"web-{digest}"
         p = ctx.db.execute(select(Product).where(Product.brand_id == b.id,
@@ -286,26 +303,61 @@ def import_onboarding_products(body: ProductImportIn, ctx: Ctx = Depends(get_ctx
         except (InvalidOperation, ValueError):
             p.price = None
             warnings.append(f"{name}: price wasn't a readable number and was left blank.")
+        mrp = raw.get("mrp")
+        try:
+            p.mrp = Decimal(str(mrp).replace(",", "")) if mrp not in (None, "") else None
+            if p.mrp is not None and p.mrp < 0:
+                p.mrp = None
+        except (InvalidOperation, ValueError):
+            p.mrp = None
+            warnings.append(f"{name}: MRP wasn't a readable number and was left blank.")
         raw_images = raw.get("image_urls") if isinstance(raw.get("image_urls"), list) else []
         image_urls = [str(value)[:1000] for value in raw_images[:8]
                       if isinstance(value, str) and host_of(value)]
         p.name = name
         p.category = str(raw.get("category") or "Product")[:80]
-        p.collection = ""
+        p.collection = str(raw.get("collection") or "")[:120]
         p.description = str(raw.get("description") or "")[:3000]
         p.currency = str(raw.get("currency") or "").upper()[:3] or "XXX"
-        p.stock = None
-        p.variants = []
+        p.dimensions = str(raw.get("dimensions") or "")[:160]
+        p.materials = [str(x)[:120] for x in (raw.get("materials") if isinstance(raw.get("materials"), list)
+                                               else str(raw.get("materials") or "").replace(";", "|").split("|")) if str(x).strip()][:20]
+        p.finishes = [str(x)[:120] for x in (raw.get("finishes") if isinstance(raw.get("finishes"), list)
+                                              else str(raw.get("finishes") or "").replace(";", "|").split("|")) if str(x).strip()][:20]
+        try:
+            p.stock = int(raw.get("stock")) if raw.get("stock") not in (None, "") else None
+            if p.stock is not None and p.stock < 0:
+                p.stock = None
+        except (TypeError, ValueError):
+            p.stock = None
+            warnings.append(f"{name}: stock count wasn't a whole number and was left unknown.")
+        backorder = raw.get("allow_backorder")
+        p.allow_backorder = (backorder if isinstance(backorder, bool) else
+                             str(backorder).strip().lower() in ("true", "yes", "1", "allow")
+                             if str(backorder or "").strip() else None)
+        variants = raw.get("variants") if isinstance(raw.get("variants"), list) else []
+        if isinstance(raw.get("variants"), str):
+            try:
+                parsed_variants = json.loads(raw["variants"])
+                variants = parsed_variants if isinstance(parsed_variants, list) else []
+            except (TypeError, ValueError):
+                variants = []
+                warnings.append(f"{name}: variants weren't valid JSON and were left blank.")
+        p.variants = [v for v in variants[:40] if isinstance(v, dict) and str(v.get("label") or "").strip()]
         p.image_urls = image_urls
         p.image_kind = "product_photo" if image_urls else "none"
         p.source_url = source_url[:1000]
         p.source_ref = source_ref[:255]
         p.retrieved_at = utcnow()
         p.is_active = True
+        p.name_local = str(raw.get("name_local") or raw.get("local_name") or "")[:255]
+        p.flags = raw.get("flags") if isinstance(raw.get("flags"), dict) else {}
+        p.delivery = raw.get("delivery") if isinstance(raw.get("delivery"), dict) else {}
         p.data_quality = [] if p.price is not None else [{"code": "no_price", "message": "The site did not expose a structured price."}]
         if p.price is not None and p.currency == "XXX":
             p.data_quality.append({"code": "no_currency", "message": "The site did not expose a price currency."})
-        p.verified_attributes = {"source_sku": source_sku} if source_sku else {}
+        attrs = raw.get("verified_attributes") if isinstance(raw.get("verified_attributes"), dict) else {}
+        p.verified_attributes = dict(attrs) | ({"source_sku": source_sku} if source_sku else {})
         if raw.get("availability"):
             p.data_quality.append({"code": "source_availability", "message": f"Availability at source: {str(raw['availability'])[:40]}"})
         ctx.db.flush()

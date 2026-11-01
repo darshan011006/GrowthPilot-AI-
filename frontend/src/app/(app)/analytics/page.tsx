@@ -21,6 +21,19 @@ const SOURCE: Record<string, { label: string; tone: "demo" | "ok" | "warn" | "ne
   none: { label: "No data yet", tone: "neutral", note: "Publish content and collect metrics to see performance here." },
 };
 
+type AccountPost = { id: string; published_at: string | null; reach: number | null; interactions: number | null };
+type InstagramAccount = { connected: boolean; account: string | null; posts: AccountPost[]; error: string | null };
+
+const SIMULATED_PLATFORMS = ["facebook", "linkedin", "x", "youtube"];
+// Deterministic pseudo-random values so the placeholder lines don't change on every render.
+function simulatedRate(platform: string, date: string): number {
+  let h = 2166136261;
+  for (const ch of `${platform}|${date}`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const noise = ((h >>> 0) % 1000) / 1000;
+  const base = 2 + (platform.length % 4) * 0.7;
+  return +(base + noise * 2.5).toFixed(2);
+}
+
 function GroupChart({ title, groups }: { title: string; groups: Group[] }) {
   if (!groups.length) return null;
   const rows = groups.map((group) => ({ name: titleCase(group.key), er: +(group.mean_engagement_rate * 100).toFixed(2), n: group.n }));
@@ -39,39 +52,46 @@ export default function AnalyticsPage() {
   const [campaign, setCampaign] = useState("");
   const { data, loading, error, reload } = useApi<Analytics>(`/api/analytics${campaign ? `?campaign_id=${campaign}` : ""}`);
   const camps = useApi<Campaign[]>("/api/campaigns");
+  const ig = useApi<InstagramAccount>("/api/analytics/instagram-account");
   const collect = useAction();
-  const periodEnd = data ? latestPeriodEnd(data.items) : null;
+  const igPosts = useMemo(() => (ig.data?.connected ? ig.data.posts : []).filter((post) => post.published_at), [ig.data]);
+  const periodEnd = useMemo(() => {
+    const own = data ? latestPeriodEnd(data.items) : null;
+    const account = igPosts.reduce<number | null>((latest, post) => {
+      const time = new Date(post.published_at as string).getTime() + 1;
+      return Number.isFinite(time) && (latest === null || time > latest) ? time : latest;
+    }, null);
+    return own === null ? account : account === null ? own : Math.max(own, account);
+  }, [data, igPosts]);
   const trend = useMemo(() => {
-    if (!data) return { rows: [] as Record<string, string | number>[], platforms: [] as string[] };
-    const totals = new Map<string, number>();
-    const daily = new Map<string, Map<string, { reach: number; interactions: number }>>();
-    const since = periodEnd === null ? 0 : periodEnd - 30 * 24 * 60 * 60 * 1000;
-    for (const item of data.items) {
+    if (!data || periodEnd === null) return { rows: [] as Record<string, string | number>[], platforms: [] as string[], hasInstagram: false };
+    // Real data: Instagram only. Other platforms aren't integrated yet, so they get simulated placeholders.
+    const end = periodEnd;
+    const days = 30;
+    const daily = new Map<string, { reach: number; interactions: number }>();
+    // Prefer every post on the connected account; fall back to posts published through GrowthPilot.
+    const source: AccountPost[] = igPosts.length ? igPosts
+      : data.items.filter((item) => item.platform === "instagram").map((item) => ({ id: String(item.id), published_at: item.published_at, reach: item.reach, interactions: item.interactions }));
+    for (const item of source) {
       if (!item.published_at || item.reach === null || item.reach <= 0 || item.interactions === null) continue;
-      if (new Date(item.published_at).getTime() < since) continue;
-      totals.set(item.platform, (totals.get(item.platform) || 0) + item.reach);
-    }
-    const platforms = [...totals.keys()].sort((a, b) => (totals.get(b) || 0) - (totals.get(a) || 0)).slice(0, 3);
-    for (const item of data.items) {
-      if (!platforms.includes(item.platform) || !item.published_at || new Date(item.published_at).getTime() < since || item.reach === null || item.reach <= 0 || item.interactions === null) continue;
+      if (new Date(item.published_at).getTime() < end - days * 24 * 60 * 60 * 1000) continue;
       const date = item.published_at.slice(0, 10);
-      const row = daily.get(date) || new Map<string, { reach: number; interactions: number }>();
-      const aggregate = row.get(item.platform) || { reach: 0, interactions: 0 };
+      const aggregate = daily.get(date) || { reach: 0, interactions: 0 };
       aggregate.reach += item.reach;
       aggregate.interactions += item.interactions;
-      row.set(item.platform, aggregate);
-      daily.set(date, row);
+      daily.set(date, aggregate);
     }
-    const rows = [...daily.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, row]) => {
-      const result: Record<string, string | number> = { date };
-      for (const platform of platforms) {
-        const value = row.get(platform);
-        if (value?.reach) result[platform] = +(value.interactions / value.reach * 100).toFixed(2);
-      }
-      return result;
-    });
-    return { rows, platforms };
-  }, [data, periodEnd]);
+    const rows: Record<string, string | number>[] = [];
+    for (let offset = days; offset >= 0; offset--) {
+      const date = new Date(end - offset * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const row: Record<string, string | number> = { date };
+      const real = daily.get(date);
+      if (real?.reach) row.instagram = +(real.interactions / real.reach * 100).toFixed(2);
+      for (const platform of SIMULATED_PLATFORMS) row[platform] = simulatedRate(platform, date);
+      rows.push(row);
+    }
+    return { rows, platforms: ["instagram", ...SIMULATED_PLATFORMS], hasInstagram: daily.size > 0 };
+  }, [data, periodEnd, igPosts]);
   const comparison = useMemo(() => data && periodEnd !== null ? periodMetrics(data.items, periodEnd) : null, [data, periodEnd]);
 
   if (loading && !data) return <Loading />;
@@ -85,7 +105,7 @@ export default function AnalyticsPage() {
   return <div className="space-y-5">
     <PageHeader title="Analytics" subtitle="Reach, engagement and growth telemetry." actions={<>
       <Select aria-label="Campaign" value={campaign} onChange={(event) => setCampaign(event.target.value)} className="w-auto"><option value="">All campaigns</option>{camps.data?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>
-      {can.edit && <Button busy={collect.busy} onClick={async () => { await collect.run(() => api.post("/api/analytics/collect")); reload(); }}>Collect latest metrics</Button>}
+      {can.edit && <Button busy={collect.busy} onClick={async () => { await collect.run(async () => { await api.post("/api/analytics/collect"); await api.get("/api/analytics/instagram-account?refresh=true").catch(() => null); }); reload(); ig.reload(); }}>Collect latest metrics</Button>}
     </>} />
     <Alert tone={source.tone === "ok" ? "ok" : source.tone === "neutral" ? "info" : source.tone === "warn" ? "warn" : "demo"} title={source.label}>{source.note}{data.freshness && ` Updated ${fmtRelative(data.freshness)}.`}</Alert>
     {collect.error && <Alert tone="bad">{collect.error}</Alert>}
@@ -97,18 +117,21 @@ export default function AnalyticsPage() {
       <Stat label="Saves · latest 30d" value={fmtNum(comparison?.hasData ? comparison.current.saves : totals.saves)} hint={<ChangeBadge percent={comparison?.change.saves.percent ?? null} isNew={comparison?.change.saves.isNew} />} />
     </section>
 
-    {data.with_metrics === 0 ? <Empty title="No metrics yet">Publish posts, then collect metrics to see your performance trend.</Empty> : <>
+    {data.with_metrics === 0 && !igPosts.length ? <Empty title="No metrics yet">Publish posts, then collect metrics to see your performance trend.</Empty> : <>
       <section className="grid gap-5 2xl:grid-cols-[1.55fr_1fr]">
-        <Card title="Engagement trend" subtitle="Daily engagement rate by platform · latest 30 days of available data" className="rounded-3xl p-5 md:p-6">
-          {trend.rows.length > 1 && trend.platforms.length ? <div className="h-[310px]">
+        <Card title="Engagement trend" subtitle="Daily engagement rate · Instagram is live data; other platforms are simulated (not yet implemented)" className="rounded-3xl p-5 md:p-6">
+          {trend.rows.length > 1 ? <div className="h-[310px]">
             <ResponsiveContainer width="100%" height="100%"><AreaChart data={trend.rows} margin={{ left: -8, right: 8, top: 12, bottom: 0 }}>
               <defs>{trend.platforms.map((platform) => <linearGradient key={platform} id={`fill-${platform}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={PLATFORM_COLORS[platform] || "#c5ff00"} stopOpacity={0.24} /><stop offset="95%" stopColor={PLATFORM_COLORS[platform] || "#c5ff00"} stopOpacity={0.01} /></linearGradient>)}</defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#25352d" vertical={false} /><XAxis dataKey="date" tickFormatter={(value: string) => value.slice(5).replace("-", "/")} fontSize={11} stroke="#91a198" tickLine={false} axisLine={false} /><YAxis unit="%" fontSize={11} stroke="#91a198" tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ background: "#101814", border: "1px solid #1d3027", borderRadius: 12 }} formatter={(value, name) => [`${value}%`, PLATFORMS[String(name)]?.label || String(name)]} labelFormatter={(label) => String(label)} />
-              {trend.platforms.map((platform) => <Area key={platform} type="monotone" dataKey={platform} name={platform} stroke={PLATFORM_COLORS[platform] || "#c5ff00"} strokeWidth={2.5} fill={`url(#fill-${platform})`} connectNulls={false} isAnimationActive={false} />)}
+              <Tooltip contentStyle={{ background: "#101814", border: "1px solid #1d3027", borderRadius: 12 }} formatter={(value, name) => [`${value}%`, `${PLATFORMS[String(name)]?.label || String(name)}${SIMULATED_PLATFORMS.includes(String(name)) ? " (simulated)" : ""}`]} labelFormatter={(label) => String(label)} />
+              {trend.platforms.map((platform) => { const simulated = SIMULATED_PLATFORMS.includes(platform); return <Area key={platform} type="monotone" dataKey={platform} name={platform} stroke={PLATFORM_COLORS[platform] || "#c5ff00"} strokeWidth={simulated ? 1.5 : 2.5} strokeDasharray={simulated ? "5 4" : undefined} fill={simulated ? "none" : `url(#fill-${platform})`} connectNulls={!simulated} dot={!simulated} isAnimationActive={false} />; })}
             </AreaChart></ResponsiveContainer>
           </div> : <div className="grid h-[310px] place-items-center text-center text-sm text-muted">More than one published day with reach and interaction data is needed for a trend.</div>}
-          <div className="mt-3 flex flex-wrap gap-3">{trend.platforms.map((platform) => <span key={platform} className="inline-flex items-center gap-2 text-xs text-muted"><i className="h-2.5 w-2.5 rounded-full" style={{ background: PLATFORM_COLORS[platform] || "#c5ff00" }} />{PLATFORMS[platform]?.label || titleCase(platform)}</span>)}</div>
+          <div className="mt-3 flex flex-wrap gap-3">{trend.platforms.map((platform) => <span key={platform} className="inline-flex items-center gap-2 text-xs text-muted"><i className="h-2.5 w-2.5 rounded-full" style={{ background: PLATFORM_COLORS[platform] || "#c5ff00" }} />{PLATFORMS[platform]?.label || titleCase(platform)}{SIMULATED_PLATFORMS.includes(platform) ? " · simulated, not yet implemented" : " · live"}</span>)}</div>
+          {ig.data?.connected && <p className="mt-2 text-xs text-muted">Instagram line uses {igPosts.length} recent post{igPosts.length === 1 ? "" : "s"} from {ig.data.account || "the connected account"}, including ones not published here. Days with no posts or no reach data are skipped.</p>}
+          {ig.data?.error && <p className="mt-2 text-xs text-bad">Couldn&apos;t read the Instagram account: {ig.data.error}</p>}
+          {!trend.hasInstagram && <p className="mt-2 text-xs text-muted">No Instagram posts with reach data in the last 30 days, so only the simulated lines are drawn.</p>}
         </Card>
 
         <Card title="Platform performance" subtitle="Total reach and average engagement rate" className="rounded-3xl p-5 md:p-6">

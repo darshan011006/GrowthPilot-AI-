@@ -6,27 +6,42 @@ import { useAuth, useCan } from "@/components/auth";
 import { FreshnessBadge, ImageKindBadge, PLATFORM_ORDER, PlatformChip, SyntheticBadge } from "@/components/domain";
 import { Alert, Badge, Button, Card, Empty, Field, Input, ListInput, Loading, Modal, PageHeader, Tabs, Textarea, useAction, useApi } from "@/components/ui";
 import { api } from "@/lib/api";
+import { catalogueDescription, csvValue, fieldStatus, isInferredSource, mergeProfileSources, normalizeCsvHeader } from "@/lib/brand-csv";
 import { fmtDate, fmtPrice } from "@/lib/format";
 import type { Asset, Brand, Persona, Product } from "@/lib/types";
 
 type Tab = "profile" | "marketing" | "claims" | "personas" | "products" | "festivals" | "assets";
 
 type WebsiteProduct = { name: string; sku: string; category: string; description: string; price: string | null; currency: string;
-  availability: string; image_urls: string[]; source_url: string };
+  availability: string; image_urls: string[]; source_url: string; collection?: string; dimensions?: string;
+  materials?: string[]; finishes?: string[]; verified_attributes?: Record<string, string> };
 type WebsiteDraft = { name: string; website: string; description: string; positioning: string; location: string; audience: string;
   voice: string; tone: string; goals: string; visual_guidelines: string; colors: string[]; content_pillars: string[];
   profile_sources: { field: string; source_url: string; retrieved_at: string; note: string }[];
-  pages_scanned: { url: string; title: string }[]; products: WebsiteProduct[]; text_preview: string; needs_user_confirmation: string[] };
+  pages_scanned: { url: string; title: string }[]; products: WebsiteProduct[]; text_preview: string; needs_user_confirmation: string[];
+  languages?: string[]; marketing_objectives?: string[]; approved_claims?: string[]; restricted_claims?: string[];
+  prohibited_messaging?: string[]; constraints?: string; fonts?: string[]; platform_preferences?: string[];
+  posting_constraints?: Brand["posting_constraints"]; campaign_budget_usd?: number | null };
 const productKey = (product: WebsiteProduct) => `${product.source_url}|${product.sku}|${product.name}`;
 
 function csvRows(text: string): string[][] {
+  const firstLine = text.split(/\r?\n/, 1)[0] || "";
+  let delimiter = ",", best = -1;
+  for (const candidate of [",", ";", "\t"]) {
+    let count = 0, quotedHeader = false;
+    for (const ch of firstLine) {
+      if (ch === '"') quotedHeader = !quotedHeader;
+      else if (ch === candidate && !quotedHeader) count++;
+    }
+    if (count > best) { delimiter = candidate; best = count; }
+  }
   const rows: string[][] = [];
   let row: string[] = [], cell = "", quoted = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (ch === '"' && quoted && text[i + 1] === '"') { cell += '"'; i++; }
     else if (ch === '"') quoted = !quoted;
-    else if (ch === "," && !quoted) { row.push(cell.trim()); cell = ""; }
+    else if (ch === delimiter && !quoted) { row.push(cell.trim()); cell = ""; }
     else if ((ch === "\n" || ch === "\r") && !quoted) {
       if (ch === "\r" && text[i + 1] === "\n") i++;
       row.push(cell.trim());
@@ -40,7 +55,7 @@ function csvRows(text: string): string[][] {
 }
 
 function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | null }) {
-  const [website, setWebsite] = useState("");
+  const [website, setWebsite] = useState(brand?.website || "");
   const [draft, setDraft] = useState<WebsiteDraft | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
@@ -49,44 +64,185 @@ function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | 
   const scan = useAction();
   const save = useAction();
   const runScan = async () => {
-    setDraft(null); setWarnings([]); setCompletion(null);
+    setWarnings([]); setCompletion(null);
     const r = await scan.run(() => api.post<{ draft: WebsiteDraft; warnings: string[] }>("/api/onboarding/scan-website", { website }));
     if (r) {
-      setDraft(r.draft); setWarnings(r.warnings);
-      setSelectedProducts(new Set(r.draft.products.map(productKey)));
+      const merged = draft ? {
+        ...r.draft,
+        ...Object.fromEntries((["name", "description", "positioning", "location", "audience", "voice", "tone", "goals", "visual_guidelines"] as const)
+          .filter((key) => draft[key].trim() && !(r.draft[key].trim() && draft.profile_sources.some((s) => s.field === key && isInferredSource(s))
+            && !draft.profile_sources.some((s) => s.field === key && !isInferredSource(s)))).map((key) => [key, draft[key]])),
+        website: r.draft.website,
+        colors: [...new Set([...r.draft.colors, ...draft.colors])],
+        content_pillars: [...new Set([...r.draft.content_pillars, ...draft.content_pillars])],
+        profile_sources: mergeProfileSources(r.draft.profile_sources, draft.profile_sources),
+        pages_scanned: [...new Map([...r.draft.pages_scanned, ...draft.pages_scanned].map((page) => [page.url, page])).values()],
+        products: [...new Map([...r.draft.products, ...draft.products].map((product) => [productKey(product), product])).values()].slice(0, 50),
+        languages: [...new Set([...(r.draft.languages || []), ...(draft.languages || [])])],
+        marketing_objectives: [...new Set([...(r.draft.marketing_objectives || []), ...(draft.marketing_objectives || [])])],
+        approved_claims: [...new Set([...(r.draft.approved_claims || []), ...(draft.approved_claims || [])])],
+        restricted_claims: [...new Set([...(r.draft.restricted_claims || []), ...(draft.restricted_claims || [])])],
+        prohibited_messaging: [...new Set([...(r.draft.prohibited_messaging || []), ...(draft.prohibited_messaging || [])])],
+        fonts: [...new Set([...(r.draft.fonts || []), ...(draft.fonts || [])])],
+        platform_preferences: [...new Set([...(r.draft.platform_preferences || []), ...(draft.platform_preferences || [])])],
+        posting_constraints: draft.posting_constraints || r.draft.posting_constraints,
+        campaign_budget_usd: draft.campaign_budget_usd ?? r.draft.campaign_budget_usd,
+        text_preview: [r.draft.text_preview, draft.text_preview].filter(Boolean).join("\n\n"),
+        needs_user_confirmation: [...new Set([...r.draft.needs_user_confirmation, ...draft.needs_user_confirmation])],
+      } : r.draft;
+      setDraft(merged); setWarnings(r.warnings);
+      setSelectedProducts(new Set(merged.products.map(productKey)));
     }
   };
   const continueManually = () => {
-    const normalized = website.trim().startsWith("http") ? website.trim() : `https://${website.trim()}`;
-    const host = (() => { try { return new URL(normalized).hostname; } catch { return ""; } })();
-    if (!host) { scan.setError("Enter a valid website URL first."); return; }
-    setDraft({ name: host.replace(/^www\./, "").split(".")[0].replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      website: normalized, description: "", positioning: "", location: "", audience: "", voice: "", tone: "", goals: "",
-      visual_guidelines: "", colors: [], content_pillars: [], profile_sources: [], pages_scanned: [],
+    const raw = website.trim();
+    const normalized = raw ? (raw.startsWith("http") ? raw : `https://${raw}`) : (brand?.website || "");
+    const host = (() => { try { return normalized ? new URL(normalized).hostname : ""; } catch { return ""; } })();
+    if (normalized && !host) { scan.setError("Enter a valid website URL or continue with a CSV."); return; }
+    const existing = editable(brand);
+    setDraft({ name: brand?.name || host.replace(/^www\./, "").split(".")[0].replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      website: normalized, description: existing.description, positioning: existing.positioning, location: existing.location,
+      audience: existing.audience, voice: existing.voice, tone: existing.tone, goals: existing.goals,
+      visual_guidelines: existing.visual_guidelines, colors: existing.colors, content_pillars: existing.content_pillars,
+      languages: existing.languages, marketing_objectives: existing.marketing_objectives,
+      approved_claims: existing.approved_claims, restricted_claims: existing.restricted_claims,
+      prohibited_messaging: existing.prohibited_messaging, constraints: existing.constraints, fonts: existing.fonts,
+      platform_preferences: existing.platform_preferences, posting_constraints: existing.posting_constraints,
+      campaign_budget_usd: existing.campaign_budget_usd,
+      profile_sources: [], pages_scanned: [],
       products: [], text_preview: "", needs_user_confirmation: ["description", "audience", "voice", "goals", "claims"] });
     setSelectedProducts(new Set());
     setCompletion(null);
   };
   const importCsv = async (file?: File) => {
-    if (!file || !draft) return;
+    if (!file) return;
     const rows = csvRows(await file.text());
     if (rows.length < 2) { scan.setError("CSV needs a header row and at least one product row."); return; }
-    const headers = rows[0].map((h) => h.replace(/^\uFEFF/, "").toLowerCase().trim().replace(/[ -]+/g, "_"));
-    const get = (cells: string[], ...keys: string[]) => {
-      const index = headers.findIndex((h) => keys.includes(h));
-      return index >= 0 ? (cells[index] || "") : "";
-    };
-    if (!headers.includes("name")) { scan.setError("CSV needs a 'name' column. Optional columns: sku, category, description, price, currency, image_url, product_url."); return; }
-    const imported = rows.slice(1).map((cells, index) => ({
-      name: get(cells, "name"), sku: get(cells, "sku") || `csv-${index + 1}`, category: get(cells, "category"),
-      description: get(cells, "description"), price: get(cells, "price") || null, currency: get(cells, "currency"),
-      availability: "", source_url: get(cells, "product_url", "source_url") || draft.website,
-      image_urls: (get(cells, "image_url", "image_urls") || "").split(/[|;]/).map((x) => x.trim()).filter(Boolean),
-    })).filter((p) => p.name.trim());
-    if (!imported.length) { scan.setError("No product rows with a name were found in that CSV."); return; }
-    const products = [...draft.products, ...imported].slice(0, 50);
-    setDraft({ ...draft, products });
+    const headers = rows[0].map(normalizeCsvHeader);
+    const get = (cells: string[], ...keys: string[]) => csvValue(headers, cells, ...keys);
+    const hasProductName = headers.some((h) => ["name", "product_name", "item_name", "title"].includes(h));
+    const hasBrandProfile = headers.some((h) => ["brand_name", "company_name", "business_name", "brand_description",
+      "company_description", "business_description", "about_us", "brand_story", "brand_voice", "brand_tone",
+      "brand_positioning", "brand_colors", "brand_website"].includes(h));
+    if (!hasProductName && !hasBrandProfile) {
+      scan.setError("CSV needs a name or product_name column. You can also include brand_name, brand_description, brand_voice, brand_colors, website, product_url, and image_url."); return;
+    }
+    const firstValue = (...keys: string[]) => rows.slice(1).map((cells) => get(cells, ...keys)).find((value) => value.trim()) || "";
+    const splitList = (value: string) => value.split(/[|;\n]/).map((part) => part.trim()).filter(Boolean);
+    const csvWebsite = firstValue("brand_website", "website", "site_url", "store_url", "company_website");
+    const productUrl = firstValue("product_url", "source_url", "product_page");
+    const rawWebsite = csvWebsite || website.trim() || draft?.website || brand?.website || "";
+    let normalizedWebsite = "";
+    try {
+      if (rawWebsite) normalizedWebsite = new URL(rawWebsite.startsWith("http") ? rawWebsite : `https://${rawWebsite}`).toString();
+      else if (productUrl) normalizedWebsite = new URL(productUrl).origin;
+    } catch { normalizedWebsite = ""; }
+    const current = draft || (() => {
+      const existing = editable(brand);
+      return { name: brand?.name || "", website: normalizedWebsite, description: existing.description,
+        positioning: existing.positioning, location: existing.location, audience: existing.audience, voice: existing.voice,
+        tone: existing.tone, goals: existing.goals, visual_guidelines: existing.visual_guidelines, colors: existing.colors,
+        content_pillars: existing.content_pillars, languages: existing.languages, marketing_objectives: existing.marketing_objectives,
+        approved_claims: existing.approved_claims, restricted_claims: existing.restricted_claims,
+        prohibited_messaging: existing.prohibited_messaging, constraints: existing.constraints, fonts: existing.fonts,
+        platform_preferences: existing.platform_preferences, posting_constraints: existing.posting_constraints,
+        campaign_budget_usd: existing.campaign_budget_usd,
+        profile_sources: [], pages_scanned: [], products: [], text_preview: "",
+        needs_user_confirmation: ["brand name", "audience", "brand voice", "approved claims"] } satisfies WebsiteDraft;
+    })();
+    const profileFields: [string, string, string[]][] = [
+      ["name", firstValue("brand_name", "company_name", "business_name", "company", "brand", "vendor"), ["brand_name", "brand", "vendor"]],
+      ["description", firstValue("brand_description", "company_description", "business_description", "brand_about", "about_brand", "about_us", "brand_story", "brand_overview"), ["brand_description", "company_description", "about_us", "brand_story"]],
+      ["positioning", firstValue("brand_positioning", "positioning", "brand_promise"), ["brand_positioning", "positioning", "brand_promise"]],
+      ["voice", firstValue("brand_voice", "voice", "tone_of_voice"), ["brand_voice", "voice", "tone_of_voice"]],
+      ["tone", firstValue("brand_tone", "tone"), ["brand_tone", "tone"]],
+      ["audience", firstValue("target_audience", "brand_audience", "audience"), ["target_audience", "brand_audience", "audience"]],
+      ["location", firstValue("brand_location", "business_location", "location"), ["brand_location", "business_location", "location"]],
+      ["goals", firstValue("brand_goals", "marketing_goals", "business_goals", "goals"), ["brand_goals", "marketing_goals", "business_goals", "goals"]],
+      ["visual_guidelines", firstValue("visual_guidelines", "brand_visual_guidelines", "brand_palette", "color_palette"), ["visual_guidelines", "brand_visual_guidelines", "brand_palette", "color_palette"]],
+      ["constraints", firstValue("constraints", "brand_constraints", "business_constraints"), ["constraints", "brand_constraints"]],
+    ];
+    const profile: Record<string, string> = {};
+    const profile_sources = [...current.profile_sources];
+    for (const [field, value, keys] of profileFields) {
+      if (!value) continue;
+      profile[field] = value;
+      profile_sources.push({ field, source_url: normalizedWebsite || "", retrieved_at: new Date().toISOString(),
+        note: `Imported from CSV columns ${keys.join("/")}; review before use.` });
+    }
+    const listProfile: [string, string[], string[]][] = [
+      ["content_pillars", splitList(firstValue("content_pillars", "brand_pillars")), ["content_pillars", "brand_pillars"]],
+      ["languages", splitList(firstValue("languages", "brand_languages")), ["languages", "brand_languages"]],
+      ["marketing_objectives", splitList(firstValue("marketing_objectives", "brand_objectives")), ["marketing_objectives", "brand_objectives"]],
+      ["approved_claims", splitList(firstValue("approved_claims")), ["approved_claims"]],
+      ["restricted_claims", splitList(firstValue("restricted_claims")), ["restricted_claims"]],
+      ["prohibited_messaging", splitList(firstValue("prohibited_messaging", "prohibited_claims")), ["prohibited_messaging", "prohibited_claims"]],
+      ["fonts", splitList(firstValue("brand_fonts", "fonts")), ["brand_fonts", "fonts"]],
+    ];
+    const profileLists: Record<string, string[]> = {};
+    for (const [field, values, keys] of listProfile) {
+      if (!values.length) continue;
+      profileLists[field] = values;
+      profile_sources.push({ field, source_url: normalizedWebsite || "", retrieved_at: new Date().toISOString(),
+        note: `Imported from CSV columns ${keys.join("/")}; review before use.` });
+    }
+    const colorText = firstValue("brand_colors", "brand_colour", "brand_color", "primary_color", "brand_palette_hex");
+    const csvColors = colorText.split(/[,|;\s]+/).filter((color) => /^#[0-9a-f]{6}$/i.test(color)).slice(0, 8);
+    const csvPlatforms = splitList(firstValue("platform_preferences", "preferred_platforms", "channels"))
+      .map((p) => p.toLowerCase()).filter((p) => (PLATFORM_ORDER as string[]).includes(p));
+    const budgetText = firstValue("campaign_budget_usd", "campaign_budget");
+    const budgetValue = budgetText ? Number(budgetText) : NaN;
+    let postingConstraints: Brand["posting_constraints"] | undefined;
+    try {
+      const rawConstraints = firstValue("posting_constraints");
+      const parsed = rawConstraints ? JSON.parse(rawConstraints) : null;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) postingConstraints = parsed;
+    } catch { /* Keep current constraints when the CSV value is not valid JSON. */ }
+    const rawRows = rows.slice(1);
+    const imported = rawRows.map((cells, index) => {
+      const imageIndexes = headers.map((header, i) => ({ header, i })).filter(({ header }) =>
+        /^(image|image_url|image_urls|image_src|photo|photo_url|photo_urls|images|photos)(?:_?\d+)?$/.test(header)).map(({ i }) => i);
+      let image_urls = [...new Set(imageIndexes.flatMap((i) => (cells[i] || "").split(/[|;,\n]/).map((x) => x.trim()).filter(Boolean)))].slice(0, 8);
+      const rowValue = (...keys: string[]) => get(cells, ...keys);
+      let source_url = rowValue("product_url", "source_url", "product_page", "url", "external_url") || normalizedWebsite || "";
+      try { if (source_url && normalizedWebsite) source_url = new URL(source_url, normalizedWebsite).toString(); } catch { source_url = ""; }
+      try { if (normalizedWebsite) image_urls = image_urls.map((url) => new URL(url, normalizedWebsite).toString()); } catch { image_urls = []; }
+      const attributesRaw = rowValue("verified_attributes", "attributes");
+      let verified_attributes: Record<string, string> = {};
+      try { const parsed = JSON.parse(attributesRaw); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) verified_attributes = parsed; } catch { /* keep empty */ }
+      return { name: rowValue("name", "product_name", "item_name", "title"), sku: rowValue("sku", "product_sku") || `csv-${index + 1}`,
+        category: rowValue("category", "categories", "product_type"), description: rowValue("product_description", "description", "body_html", "short_description"),
+        price: rowValue("price", "regular_price") || null, currency: rowValue("currency", "currency_code"),
+        availability: rowValue("availability", "stock_status"), source_url, image_urls,
+        collection: rowValue("collection", "collection_name"), dimensions: rowValue("dimensions", "size") ||
+          [rowValue("length", "length_in"), rowValue("width", "width_in"), rowValue("height", "height_in")].filter(Boolean).join(" × "),
+        materials: splitList(rowValue("materials", "material")), finishes: splitList(rowValue("finishes", "finish", "colour", "color")),
+        mrp: rowValue("mrp", "compare_at_price") || null, stock: rowValue("stock", "quantity", "inventory_quantity") || null,
+        allow_backorder: rowValue("allow_backorder", "backorder", "backorders_allowed"), variants: rowValue("variants"),
+        name_local: rowValue("name_local", "local_name"),
+        verified_attributes };
+    }).filter((product) => product.name.trim());
+    if (!imported.length && !hasBrandProfile) { scan.setError("No product rows with a name or brand profile fields were found in that CSV."); return; }
+    const siteHost = (() => { try { return normalizedWebsite ? new URL(normalizedWebsite).hostname : ""; } catch { return ""; } })();
+    const csvName = profile.name || current.name || siteHost.replace(/^www\./, "").split(".")[0].replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    if (!profile.description && !current.description && imported.length) {
+      profile.description = catalogueDescription(csvName, imported);
+      profile_sources.push({ field: "description", source_url: "", retrieved_at: new Date().toISOString(),
+        note: "Suggested from CSV product names and categories; confirm the brand description before saving." });
+      setWarnings(["This CSV has no brand description. A catalogue-based description is suggested below. Review the brand name, description, audience and design style before confirming."]);
+    } else { setWarnings([]); }
+    const products = [...new Map([...current.products, ...imported].map((p) => [productKey(p), p])).values()].slice(0, 50);
+    setDraft({ ...current, ...profile, ...profileLists, name: csvName, website: normalizedWebsite, colors: csvColors.length ? csvColors : current.colors,
+      visual_guidelines: profile.visual_guidelines || (colorText ? `${current.visual_guidelines} Brand palette from CSV: ${colorText}.`.trim() : current.visual_guidelines),
+      platform_preferences: csvPlatforms.length ? csvPlatforms : current.platform_preferences,
+      posting_constraints: postingConstraints || current.posting_constraints,
+      campaign_budget_usd: Number.isFinite(budgetValue) && budgetValue >= 0 ? budgetValue : current.campaign_budget_usd,
+      profile_sources: mergeProfileSources(profile_sources), products,
+      text_preview: `Loaded ${imported.length} product rows from ${file.name}. Brand profile fields found: ${[...Object.keys(profile), ...Object.keys(profileLists), ...(csvColors.length ? ["colors"] : []), ...(csvPlatforms.length ? ["platform_preferences"] : []), ...(postingConstraints ? ["posting_constraints"] : [])].join(", ") || "none"}.` });
     setSelectedProducts(new Set(products.map(productKey)));
+    if (csvPlatforms.length) setPlatforms(csvPlatforms);
+    setWebsite(normalizedWebsite);
+    setCompletion(null);
     scan.setError(null);
   };
   const confirm = async () => {
@@ -95,30 +251,51 @@ function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | 
     const r = await save.run(async () => {
       await api.put("/api/brand", { ...existing,
       name: draft.name.trim(), website: draft.website, description: draft.description || existing.description,
-      positioning: draft.positioning, content_pillars: draft.content_pillars,
+      positioning: draft.positioning || existing.positioning, content_pillars: draft.content_pillars.length ? draft.content_pillars : existing.content_pillars,
       location: draft.location.trim() || existing.location, audience: draft.audience.trim() || existing.audience,
       voice: draft.voice.trim() || existing.voice, tone: draft.tone.trim() || existing.tone,
       goals: draft.goals.trim() || existing.goals, visual_guidelines: draft.visual_guidelines.trim() || existing.visual_guidelines,
-      colors: draft.colors.length ? draft.colors : existing.colors, platform_preferences: platforms,
-      profile_sources: [...(brand?.profile_sources || []), ...draft.profile_sources],
-      permitted_sources: [...new Set([...existing.permitted_sources, new URL(draft.website).hostname])],
+      colors: draft.colors.length ? draft.colors : existing.colors,
+      languages: draft.languages?.length ? draft.languages : existing.languages,
+      marketing_objectives: draft.marketing_objectives?.length ? draft.marketing_objectives : existing.marketing_objectives,
+      approved_claims: draft.approved_claims?.length ? draft.approved_claims : existing.approved_claims,
+      restricted_claims: draft.restricted_claims?.length ? draft.restricted_claims : existing.restricted_claims,
+      prohibited_messaging: draft.prohibited_messaging?.length ? draft.prohibited_messaging : existing.prohibited_messaging,
+      constraints: draft.constraints || existing.constraints, fonts: draft.fonts?.length ? draft.fonts : existing.fonts,
+      platform_preferences: platforms,
+      posting_constraints: draft.posting_constraints || existing.posting_constraints,
+      campaign_budget_usd: draft.campaign_budget_usd ?? existing.campaign_budget_usd,
+      profile_sources: mergeProfileSources(brand?.profile_sources || [], draft.profile_sources),
+      permitted_sources: [...new Set([...existing.permitted_sources, ...(draft.website ? [new URL(draft.website).hostname] : [])])],
       });
       const chosen = draft.products.filter((p) => selectedProducts.has(productKey(p)));
       const result = chosen.length ? await api.post<{ created: number; updated: number; photos_downloaded: number; warnings: string[] }>(
-        "/api/onboarding/import-products", { website: draft.website, products: chosen }) :
+        "/api/onboarding/import-products", { website: draft.website || null, products: chosen }) :
         { created: 0, updated: 0, photos_downloaded: 0, warnings: [] };
       return result;
     });
     if (r) { setWarnings((prev) => [...prev, ...r.warnings]); setCompletion({ products: r.created + r.updated, photos: r.photos_downloaded }); onSaved(); }
   };
   const sampleGoal = draft ? `Create one Instagram product post for ${draft.name} using a confirmed product from the catalogue. Use only verified product facts and its real product photo when available. Do not publish.` : "";
-  return <Card title="Set up your brand from its website" subtitle="We prepare a brand and product draft from public pages. Review it, answer only the few gaps, and confirm. No website password is needed.">
+  return <Card title="Import brand details and catalogue" subtitle="Start with a CSV, a public website, or both. Review the draft before it updates Brand Brain or adds products.">
     <div className="flex flex-col gap-2 sm:flex-row"><Input aria-label="Business website" type="url" placeholder="https://yourbusiness.com" value={website} onChange={(e) => setWebsite(e.target.value)} />
-      <Button variant="primary" busy={scan.busy} onClick={runScan} disabled={!website.trim()}>Scan website</Button></div>
+      <Button variant="primary" busy={scan.busy} onClick={runScan} disabled={!website.trim()}>Scan website</Button>
+      <label className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-line px-3 py-2 text-sm font-semibold hover:border-accent">Upload CSV<input type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => { void importCsv(e.target.files?.[0]); e.target.value = ""; }} /></label>
+    </div>
+    <p className="mt-2 text-xs text-muted">CSV can include brand_name, brand_description, positioning, voice, tone, audience, goals, brand_colors, and product columns such as name, sku, category, description, price, materials, dimensions, image_url, and product_url. CSV rows can include image URLs; product photos are imported as catalogue photos, separate from Gemini-created post images.</p>
     {scan.error && <div className="mt-3 flex flex-wrap items-center gap-2"><Alert tone="bad">{scan.error}</Alert><Button size="sm" onClick={continueManually}>Continue setup manually</Button></div>}
-    {warnings.length > 0 && <div className="mt-3"><Alert tone="info" title="Some pages were skipped">{warnings.join(" ")}</Alert></div>}
+    {warnings.length > 0 && <div className="mt-3"><Alert tone="info" title="Import notes">{warnings.join(" ")}</Alert></div>}
     {draft && <div className="mt-4 space-y-3 rounded-xl border border-line p-4">
       <div className="flex flex-wrap items-center justify-between gap-2"><strong>Review your setup draft</strong><Badge tone="warn">Confirm before use</Badge></div>
+      <div className="rounded-lg border border-line bg-panel-2 p-3" aria-label="Extraction status">
+        <p className="mb-2 text-sm font-semibold">What was found</p>
+        <div className="flex flex-wrap gap-2 text-xs">{([["description", "Description", draft.description], ["positioning", "Positioning", draft.positioning], ["audience", "Audience", draft.audience],
+          ["voice", "Voice", draft.voice], ["tone", "Tone", draft.tone], ["visual_guidelines", "Visual guidance", draft.visual_guidelines], ["colors", "Colours", draft.colors],
+          ["location", "Location", draft.location], ["goals", "Goals", draft.goals]] as [string, string, string | string[]][]).map(([key, label, value]) => {
+          const status = fieldStatus(key, value, draft.profile_sources);
+          return <Badge key={key} tone={status === "extracted" ? "ok" : status === "inferred" ? "warn" : "bad"}>{label}: {status === "extracted" ? "from source" : status === "inferred" ? "inferred — confirm" : "missing — add"}</Badge>;
+        })}</div>
+      </div>
       <Field label="Suggested business name">{(id) => <Input id={id} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />}</Field>
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Location (from published business address)">{(id) => <Input id={id} value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} placeholder="Not found on public pages" />}</Field>
@@ -153,11 +330,10 @@ function WebsiteSetup({ onSaved, brand }: { onSaved: () => void; brand: Brand | 
             </label>;
           })}</div>
         )}
-        <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:border-accent">Import product CSV<input type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => { void importCsv(e.target.files?.[0]); e.target.value = ""; }} /></label>
-        <p className="mt-1 text-xs text-muted">CSV columns: name (required), sku, category, description, price, currency, image_url, product_url. Product URLs should use this same website.</p>
+        <p className="mt-1 text-xs text-muted">Select products and photos to add to the catalogue. Use Import CSV above to add more rows.</p>
       </div>
       <p className="text-xs text-muted">Scanned {draft.pages_scanned.length} pages: {draft.pages_scanned.map((p) => p.title || p.url).join(" · ")}</p>
-      {draft.profile_sources.length > 0 && <details className="text-xs text-muted"><summary className="cursor-pointer">Show source evidence</summary><ul className="mt-2 space-y-1">{draft.profile_sources.map((s, i) => <li key={`${s.source_url}-${i}`}><a className="text-info underline" href={s.source_url} target="_blank" rel="noreferrer">{s.source_url}</a> — {s.note}</li>)}</ul></details>}
+      {draft.profile_sources.length > 0 && <details className="text-xs text-muted"><summary className="cursor-pointer">Show source evidence</summary><ul className="mt-2 space-y-1">{draft.profile_sources.map((s, i) => <li key={`${s.field}-${s.source_url}-${i}`}>{s.source_url ? <><a className="text-info underline" href={s.source_url} target="_blank" rel="noreferrer">{s.source_url}</a> — </> : "CSV — "}{s.note}</li>)}</ul></details>}
       {draft.text_preview && <details className="text-xs text-muted"><summary className="cursor-pointer">Preview extracted page text</summary><p className="mt-2 whitespace-pre-wrap">{draft.text_preview}</p></details>}
       <p className="text-xs text-muted">Review factual details and add approved claims later. GrowthPilot won&apos;t invent prices, offers, or guarantees.</p>
       {save.error && <Alert tone="bad">{save.error}</Alert>}
@@ -496,7 +672,6 @@ export default function BrandPage() {
       <PageHeader title="Brand Brain" subtitle="Everything the agent knows about the brand. Agent runs load this first (as a frozen snapshot), and verification checks every post against it." actions={<>
         {brand && brand.colors.slice(0, 5).map((c) => <span key={c} title={c} className="h-6 w-6 rounded-full border border-line" style={{ background: c }} />)}
         {brand?.is_synthetic && <SyntheticBadge label="Fictional demo brand" />}</>} />
-      <div className="mb-4"><WebsiteSetup brand={brand} onSaved={brandSaved} /></div>
       {brand && brand.profile_sources?.length > 0 && tab === "profile" && (
         <details className="mb-4 rounded-xl border border-line bg-panel p-3 text-sm">
           <summary className="cursor-pointer font-semibold">Where this profile came from ({brand.profile_sources.length})</summary>
@@ -511,7 +686,8 @@ export default function BrandPage() {
       ]} />
       {!brand && tab !== "profile" && tab !== "claims" ? <Empty title="Create the brand profile first" /> : (
         <>
-          {(tab === "profile" || tab === "claims" || tab === "marketing") && <BrandForm key={`${brand?.id ?? "new"}-${tab}`} brand={brand} section={tab} onSaved={brandSaved} />}
+          {tab === "profile" && <div className="mb-4"><WebsiteSetup brand={brand} onSaved={brandSaved} /></div>}
+          {(tab === "profile" || tab === "claims" || tab === "marketing") && <BrandForm key={`${brand?.id ?? "new"}-${brand?.updated_at}-${tab}`} brand={brand} section={tab} onSaved={brandSaved} />}
           {tab === "festivals" && <Festivals brand={brand!} />}
           {tab === "products" && <CatalogueStatus brand={brand!} products={data!.products} onChange={reload} />}
           {tab === "personas" && <PersonaEditor personas={data!.personas} onChange={reload} />}

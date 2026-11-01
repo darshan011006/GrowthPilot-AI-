@@ -654,6 +654,9 @@ class DemoGenerator:
 # ── LLM generator ────────────────────────────────────────────────────────
 
 RULES = """Rules for everything you write (a human reviews it before anything is published):
+- Follow user_request for the requested theme and concept. Ground the subject, audience, voice and visual design
+  in brand.description, positioning, tone, visual_guidelines and colors. Do not substitute another business or
+  reuse unrelated product categories. Missing brand facts must be left out, not filled with sample-brand facts.
 - Use only facts present in the brand brief, the product data and the brand's own published content provided.
   Never invent materials, sizes, prices, discounts, offers, warranty terms, certifications, stock, delivery
   promises or health benefits. If you lack a fact, leave it out.
@@ -712,11 +715,17 @@ class LLMGenerator:
             CampaignPlanOut)
 
     def slot_content(self, brief, slot, products):
+        option = str(slot.get("variant") or "")
+        option_count = int(slot.get("option_count") or 1)
+        option_note = (f" This is option {option.removeprefix('option-')} of {option_count} for the same post. Make its "
+                       "angle, opening hook, caption and image direction clearly distinct from the other options, "
+                       "while keeping all factual claims identical and supported by the supplied data."
+                       if option.startswith("option-") and option_count > 1 else "")
         return self._call(
             "creative",
             "Write the post for this calendar slot: internal title, hook (short enough for a poster headline, under "
             "70 characters), caption, hashtags, CTA (under 30 characters), an image brief, a carousel outline (one "
-            "short line per slide) if the slot is a carousel, a one-line rationale, and the product ids it features.",
+            "short line per slide) if the slot is a carousel, a one-line rationale, and the product ids it features." + option_note,
             {"brief": brief, "slot": slot, "products": products}, SlotContentOut)
 
     def revise(self, brief, item, failures, products):

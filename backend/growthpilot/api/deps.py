@@ -90,12 +90,16 @@ def load_session(request: Request, db: Session) -> UserSession | None:
 
 
 def require_json_origin(request: Request) -> None:
-    """For unauthenticated POSTs (login/register): only same-origin JS can send JSON with this header without a
-    CORS preflight, and the API grants no CORS."""
+    """Protect unauthenticated POSTs (login/register) with JSON and same-origin checks.
+
+    ``X-Requested-With`` is retained as the fallback when a client omits ``Origin``. When
+    ``Origin`` is present, the strict origin allowlist is authoritative; requiring both
+    checks rejects otherwise valid same-origin browser requests when a proxy drops the
+    custom header.
+    """
     if request.method in SAFE_METHODS:
         return
-    if "application/json" not in request.headers.get("content-type", "") or \
-            request.headers.get("x-requested-with") != "GrowthPilot":
+    if "application/json" not in request.headers.get("content-type", ""):
         raise ApiError(403, "Request blocked by CSRF protection.", "csrf")
     origin = request.headers.get("origin")
     if origin:
@@ -125,6 +129,8 @@ def require_json_origin(request: Request) -> None:
                     allowed.add(tunnel_origin)
         if normalized(origin) not in allowed:
             raise ApiError(403, "Request blocked by CSRF protection.", "csrf")
+    elif request.headers.get("x-requested-with") != "GrowthPilot":
+        raise ApiError(403, "Request blocked by CSRF protection.", "csrf")
 
 
 def get_ctx(request: Request, db: Session = Depends(get_db)) -> Ctx:

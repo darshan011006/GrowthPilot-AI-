@@ -1,4 +1,4 @@
-"""Optional AI backgrounds via Gemini image generation (Interactions API, ``response_format`` type ``image``).
+"""Gemini campaign image generation (Interactions API, ``response_format`` type ``image``).
 
 Only abstract backgrounds are requested — never products, people, deities or text — and the poster labels the
 background as AI-generated. Product imagery always comes from real photos. Implemented from Google's image
@@ -33,10 +33,10 @@ def nearest_ratio(w: int, h: int) -> str:
 
 
 def background_prompt(theme: str, colors: list[str]) -> str:
-    return (f"An abstract, softly lit decorative background for a festive Indian home-devotion brand poster. Theme: "
-            f"{theme[:120]}. Use a palette close to {', '.join(colors[:4]) or 'maroon, gold and cream'}. Subtle "
-            "texture, warm bokeh, traditional geometric patterns at the edges, generous empty space in the centre "
-            "for text. No text, no letters, no logos, no products, no people, no deities, no religious idols.")
+    return (f"Create an abstract editorial background for a polished social media campaign poster. Theme: "
+            f"{theme[:160]}. Use a palette close to {', '.join(colors[:4]) or 'the brand colours'}. Add restrained "
+            "seasonal accents and layered texture while keeping generous clear space for overlaid text. "
+            "No text, letters, logos, interface mockups, products, or people.")
 
 
 def generate_background(theme: str, colors: list[str], width: int, height: int) -> tuple[bytes, str, dict]:
@@ -169,7 +169,7 @@ def generate_image(prompt: str, *, aspect_ratio: str, size: str, model: str,
     price = image_price(model, size)
     usage.preflight(price, f"A {size} campaign image")
     body = {"model": model, "store": False, "input": [{"type": "text", "text": prompt}],
-            "response_format": {"type": "image", "mime_type": "image/png", "aspect_ratio": aspect_ratio,
+            "response_format": {"type": "image", "mime_type": "image/jpeg", "aspect_ratio": aspect_ratio,
                                 "image_size": size}}
     with _limiter():
         try:

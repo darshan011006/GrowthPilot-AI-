@@ -620,3 +620,38 @@ class InstagramAdapter:
             saves=values.get("saved"),
             raw={"insights": values},
         )
+
+    def list_media(self, ctx: ConnectionContext, *, limit: int = 50) -> list[dict]:
+        """Recent posts on the connected account (not only ones published here), with per-post engagement."""
+        unified_login = ctx.credentials.get("login_type") == "unified_login"
+        listing = self._get(
+            ctx,
+            f"{ctx.account_id if unified_login else 'me'}/media",
+            "media listing",
+            fields="id,timestamp,media_type,like_count,comments_count,permalink,caption",
+            limit=min(max(limit, 1), 100),
+        )
+        posts = []
+        for media in listing.get("data", [])[:limit]:
+            post = {
+                "id": str(media.get("id") or ""),
+                "published_at": media.get("timestamp"),
+                "media_type": media.get("media_type"),
+                "permalink": media.get("permalink"),
+                "caption": (media.get("caption") or "")[:120],
+                "likes": media.get("like_count"),
+                "comments": media.get("comments_count"),
+                "reach": None, "shares": None, "saves": None, "views": None,
+            }
+            try:
+                m = self.fetch_metrics(ctx, post["id"], hours_since=0, hints={})
+            except AdapterError:
+                m = None  # some media types/ages expose no insights; keep the public counts
+            if m is not None:
+                post.update(reach=m.reach, shares=m.shares, saves=m.saves, views=m.views)
+                if m.likes is not None:
+                    post["likes"] = m.likes
+                if m.comments is not None:
+                    post["comments"] = m.comments
+            posts.append(post)
+        return posts

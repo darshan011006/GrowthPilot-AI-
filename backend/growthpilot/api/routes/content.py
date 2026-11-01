@@ -331,7 +331,8 @@ def regenerate(cid: int, body: RegenIn, ctx: Ctx = Depends(get_ctx)):
 class CreativeIn(BaseModel):
     variation: int = Field(default=0, ge=0, le=5)
     template: str | None = None
-    ai_background: bool = False
+    ai_background: bool | None = None
+    full_gemini_image: bool | None = None
 
 
 @router.post("/content/{cid}/creative")
@@ -342,11 +343,20 @@ def rerender(cid: int, body: CreativeIn, ctx: Ctx = Depends(get_ctx)):
     item = ctx.get(ContentItem, cid)
     if item.content_type not in ("post", "carousel"):
         raise ApiError(400, "Only image posts and carousels have rendered creatives.", "workflow")
+    run = ctx.db.get(AgentRun, item.run_id) if item.run_id else None
+    # Live post images always use Gemini; the explicit local renderer remains available in demo mode only.
+    live_gemini_required = get_settings().is_live
+    use_ai_background = live_gemini_required or bool(body.ai_background)
     try:
-        cover = creative_service.render_for_item(ctx.db, item, template=body.template, variation=body.variation,
-                                                 ai_background=body.ai_background)
-        slides = []
-        if item.content_type == "carousel":
+        use_full_gemini = live_gemini_required or (body.full_gemini_image if body.full_gemini_image is not None else use_ai_background)
+        if use_full_gemini:
+            cover = creative_service.generate_full_image_for_item(ctx.db, item)
+            slides = []
+        else:
+            cover = creative_service.render_for_item(ctx.db, item, template=body.template, variation=body.variation,
+                                                     ai_background=use_ai_background)
+            slides = []
+        if not use_full_gemini and item.content_type == "carousel":
             outline = [x for x in (item.carousel_outline or [])[1:] if x.strip()][:5] or [item.cta or item.title]
             for i, line in enumerate(outline, start=2):
                 slides.append(creative_service.render_for_item(ctx.db, item, slide=(i, len(outline) + 1),
@@ -475,6 +485,37 @@ def cancel(cid: int, ctx: Ctx = Depends(get_ctx)):
     maybe_auto_resume(ctx.db, item)
     ctx.db.commit()
     return _detail(ctx, item)
+
+
+@router.post("/content/{cid}/choose-option")
+def choose_option(cid: int, ctx: Ctx = Depends(get_ctx)):
+    """Keep one generated alternative for review and cancel its sibling options."""
+    ctx.require_editor()
+    item = ctx.get(ContentItem, cid)
+    if item.status != ContentStatus.IN_REVIEW or not item.run_id or not (item.variant_label or "").startswith("option-"):
+        raise ApiError(400, "This post isn't a selectable option in review.", "workflow")
+    siblings = ctx.db.execute(select(ContentItem).where(
+        ContentItem.workspace_id == item.workspace_id, ContentItem.run_id == item.run_id,
+        ContentItem.campaign_id == item.campaign_id, ContentItem.platform == item.platform,
+        ContentItem.planned_at == item.planned_at, ContentItem.master_id.is_(None),
+        ContentItem.variant_label.like("option-%"), ContentItem.id != item.id,
+    )).scalars().all()
+    cancelled = []
+    for sibling in siblings:
+        if sibling.status in (ContentStatus.DRAFT, ContentStatus.IN_REVIEW):
+            workflow.cancel(ctx.db, sibling, user_id=ctx.user.id, role=ctx.role, ip=ctx.ip)
+            cancelled.append(sibling.id)
+    run = ctx.db.get(AgentRun, item.run_id)
+    if run:
+        state = dict(run.state or {})
+        if item.id in state.get("awaiting_ids", []):
+            state["awaiting_ids"] = [item.id]
+        state["selected_option_id"] = item.id
+        run.state = state
+    audit.record(ctx.db, "content.option_selected", workspace_id=ctx.workspace.id, user_id=ctx.user.id,
+                 target_type="content", target_id=item.id, ip=ctx.ip, cancelled_options=cancelled)
+    ctx.db.commit()
+    return _detail(ctx, item) | {"cancelled_options": cancelled}
 
 
 class ScheduleIn(BaseModel):

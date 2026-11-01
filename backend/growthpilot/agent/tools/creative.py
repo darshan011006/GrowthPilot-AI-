@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from ...models import ContentItem, ContentStatus
+from ...models import Asset, ContentItem, ContentStatus
 from ...services import creative as creative_service
 from ...services.content import EDITABLE_FIELDS, normalise_hashtags, update
 from ...services.errors import WorkflowError
@@ -18,10 +18,12 @@ EDITABLE = {ContentStatus.DRAFT, ContentStatus.CHANGES_REQUESTED, ContentStatus.
 
 def _slot(ctx: ToolContext, item: ContentItem, idx: int, pillar_index: int = 0) -> dict:
     occasion = ctx.state.get("params", {}).get("occasion")
+    option_count = ctx.state.get("params", {}).get("option_count", 1)
     arts = ctx.state.get("articles") or []
     return {"index": idx, "date": item.planned_at.isoformat() if item.planned_at else None, "pillar": item.pillar,
             "content_type": item.content_type, "variant": item.variant_label, "platform": item.platform,
             "occasion": occasion, "festival": ctx.state.get("festival"), "pillar_index": pillar_index,
+            "option_count": option_count,
             "article": arts[pillar_index % len(arts)] if arts else None}
 
 
@@ -144,6 +146,7 @@ class CreativeIn(ToolInput):
     variation: int = Field(default=0, ge=0, le=5, description="Layout/colour variation.")
     ai_background: bool = Field(default=False, description="Use the configured image provider for the background "
                                                            "(costs money; product imagery stays real).")
+    full_gemini_image: bool = Field(default=False, description="Use Gemini for the final image without local composition.")
 
 
 def render_item(ctx: ToolContext, item: ContentItem, *, variation: int = 0, ai_background: bool = False) -> list[int]:
@@ -167,14 +170,15 @@ def render_item(ctx: ToolContext, item: ContentItem, *, variation: int = 0, ai_b
     return [cover.id, *slides]
 
 
-@tool("generate_creative_asset", "Render real, downloadable JPEG posters (and carousel slides) for each item in the "
-      "platform's format: brand colours and fonts, verified catalogue facts, the store's real product photo when one "
-      "exists — otherwise a typographic product card (stock images are never shown as the product). On-image text is "
-      "claim-checked. Optional AI background via the image provider.", CreativeIn, Permission.DRAFT,
-      implementation="local Pillow renderer (free); optional Gemini image background", role=C,
-      effects=(Effect.LOCAL_WRITE,))
+@tool("generate_creative_asset", "Generate each final post image with Gemini in live mode, including the full "
+      "designed layout and text. If Gemini is unavailable or fails, report the error and leave the post without a "
+      "new image; never substitute a locally rendered image. Use the platform's format, brand colours, verified "
+      "catalogue facts, and real product photos only when they exist. On-image text is claim-checked.", CreativeIn, Permission.DRAFT,
+      implementation="Gemini full-image generation in live mode; local renderer only in demo mode", role=C,
+      effects=(Effect.LOCAL_WRITE, Effect.COST))
 def generate_creative_asset(ctx: ToolContext, inp: CreativeIn) -> ToolResult:
     done, failed, new_assets = [], [], []
+    gemini_backgrounds, background_fallbacks = 0, []
     fails = dict(ctx.state.get("validation_failures", {}))
     for item in items(ctx, inp.content_ids):
         if item.status not in EDITABLE or (item.asset_id and not inp.rerender):
@@ -182,9 +186,22 @@ def generate_creative_asset(ctx: ToolContext, inp: CreativeIn) -> ToolResult:
         if item.content_type in ("video", "reel", "story"):
             continue
         try:
-            ids = render_item(ctx, item, variation=inp.variation, ai_background=inp.ai_background)
+            if ctx.settings.is_live or inp.full_gemini_image:
+                ids = [creative_service.generate_full_image_for_item(ctx.db, item).id]
+            else:
+                ids = render_item(ctx, item, variation=inp.variation, ai_background=inp.ai_background)
             new_assets += ids
             done.append(item.id)
+            cover = ctx.db.get(Asset, item.asset_id) if item.asset_id else None
+            if inp.full_gemini_image and cover and (cover.meta or {}).get("generation_mode") == "full_image":
+                gemini_backgrounds += 1
+            elif inp.ai_background and cover:
+                if (cover.meta or {}).get("background") == "ai_generated":
+                    gemini_backgrounds += 1
+                else:
+                    background_fallbacks.append({"content_id": item.id,
+                                                 "reason": (cover.meta or {}).get("background_error") or
+                                                 "Template background used."})
             fails.pop(f"creative:{item.id}", None)
             key = f"product_claims:{item.id}"
             if key in fails:
@@ -200,6 +217,17 @@ def generate_creative_asset(ctx: ToolContext, inp: CreativeIn) -> ToolResult:
     ctx.remember_ids("asset_ids", new_assets)
     if not done and not failed:
         raise ToolError("No items needed images.")
-    return ToolResult(f"Rendered {len(new_assets)} image file(s) for {len(done)} item(s)"
-                      + (f"; {len(failed)} item(s) held: on-image text failed checks" if failed else "") + ".",
-                      {"content_ids": done, "asset_ids": new_assets, "failed": failed})
+    summary = f"Rendered {len(new_assets)} image file(s) for {len(done)} item(s)"
+    if inp.full_gemini_image:
+        summary += f"; full Gemini images used for {gemini_backgrounds}/{len(done)} post(s)"
+    elif inp.ai_background:
+        summary += f"; Gemini backgrounds used for {gemini_backgrounds}/{len(done)} post(s)"
+        if background_fallbacks:
+            summary += f"; {len(background_fallbacks)} used the template fallback"
+    if failed:
+        summary += f"; {len(failed)} item(s) held: on-image text failed checks"
+    return ToolResult(summary + ".", {"content_ids": done, "asset_ids": new_assets, "failed": failed,
+                                        "ai_background_requested": inp.ai_background,
+                                        "full_gemini_image_requested": inp.full_gemini_image,
+                                        "gemini_backgrounds_used": gemini_backgrounds,
+                                        "background_fallbacks": background_fallbacks})

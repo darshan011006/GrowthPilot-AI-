@@ -530,36 +530,38 @@ def copy_options(f: BriefFacts, angle: str, festival: dict | None) -> list[tuple
     brand = f.brand_name
     p = f.product
     name = short_name(p.name) if p else ""
-    cat = (p.category if p else "") or "pooja essentials"
+    cat = (p.category if p else "") or (f.categories[0] if f.categories else "collection")
+    devotional = any(word in " ".join([cat, *f.categories]).lower()
+                     for word in ("pooja", "puja", "diya", "incense", "devotional"))
     fest, _ = _festival_word(festival)
     if angle == "product_spotlight":
         return [(f"Meet our {name}", f"From the {cat} range at {brand}"),
                 (f"Spotlight: {name}", f"See its details in the {cat} range at {brand}"),
-                (f"{name}, for your pooja shelf", f"Find it in the {cat} range at {brand}")]
+                (f"Discover {name}", f"Find it in the {cat} range at {brand}")]
     if angle == "material_focus":
-        m = (p.materials[0] if p and p.materials else "brass").lower()
-        return [(f"{m.title()} for your pooja space", f"Our {name}, from the {cat} range at {brand}"),
+        m = (p.materials[0] if p and p.materials else "materials").lower()
+        return [(f"A closer look at {m}", f"Our {name}, from the {cat} range at {brand}"),
                 (f"The {m} edit", f"Explore {m} pieces in the {cat} range at {brand}")]
     if angle == "category_edit":
         return [(f"Browse our {cat} range", f"{cat} for every day and festive days, at {brand}"),
                 (f"Your {cat} edit", f"Everyday {cat} picks, all at {brand}")]
     if angle == "festival_prep":
-        return [(f"Getting ready for {fest}", f"Plan your {fest} pooja list with {brand}"),
+        return [(f"Getting ready for {fest}", f"Plan your {fest} checklist with {brand}"),
                 (f"{fest[:1].upper() + fest[1:]} prep, made simple", f"Start your {fest} checklist with {brand}")]
     if angle == "know_how":
         title = str((f.article or {}).get("title") or "")
         out = []
         if title and words(title) <= HEADLINE_MAX_WORDS and not religious_terms(title) and not ritual_terms(title):
             out.append((title, f"Read the full guide from {brand}"))
-        return out + [("Pooja know-how, made simple", f"Short, practical guides from {brand}"),
-                      ("Small steps for a calm pooja", f"Practical notes from the {brand} team")]
+        return out + [("Pooja know-how, made simple" if devotional else "Practical ideas, made simple", f"Short, practical guides from {brand}"),
+                      ("Explore the details", f"Practical notes from the {brand} team")]
     cats = [c for c in f.categories if not religious_terms(c)][:2]
     first = f"Shop {cats[0].lower()} and more at {brand}" if cats else f"Find everyday essentials at {brand}"
     if len(cats) > 1:
         first = f"Shop {cats[0].lower()}, {cats[1].lower()} and more at {brand}"
-    return [("Pooja essentials for every day", first),
-            ("Your pooja space, simplified", f"Everyday essentials, thoughtfully listed at {brand}"),
-            ("Ready for today's pooja", f"Find everyday essentials at {brand}")]
+    return [("Pooja essentials for every day" if devotional else f"Discover {brand}", first),
+            (f"Explore our {cat}", f"Explore the details with {brand}"),
+            ("A closer look", f"Discover the collection at {brand}")]
 
 
 def cta_for(f: BriefFacts, angle: str) -> str:

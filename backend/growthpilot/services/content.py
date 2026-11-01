@@ -53,7 +53,8 @@ def require(role: str, *allowed: Role) -> None:
 
 
 def normalise_hashtags(raw: list[str] | str) -> list[str]:
-    parts = re.split(r"[\s,]+", raw) if isinstance(raw, str) else list(raw or [])
+    values = [raw] if isinstance(raw, str) else list(raw or [])
+    parts = [part for value in values for part in re.split(r"[\s,]+", str(value))]
     out: list[str] = []
     for p in parts:
         tag = re.sub(r"[^\w]", "", str(p).strip().lstrip("#"))

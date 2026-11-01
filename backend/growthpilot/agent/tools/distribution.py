@@ -99,6 +99,8 @@ def check_platform_capabilities(ctx: ToolContext, inp: CapabilitiesIn) -> ToolRe
 
 class ScheduleIn(ToolInput):
     days: int = Field(default=7, ge=1, le=14)
+    option_count: int = Field(default=1, ge=1, le=5, description="Alternative creative options for each date; the user selects one.")
+    content_type: str | None = Field(default=None, pattern="^(post|carousel)$")
     start_date: date | None = None
     occasion: str | None = None
     category: str | None = None
@@ -148,19 +150,22 @@ def prepare_schedule(ctx: ToolContext, inp: ScheduleIn) -> ToolResult:
     base = analytics.baseline(ctx.db, ctx.workspace_id, metric=metric, content_type="post", platform=primary)
     useful, product_pillars = _pillars(b, occasion)
     generic = bool(b.content_pillars)
-    exp = Experiment(
-        workspace_id=ctx.workspace_id, campaign_id=camp.id, hypothesis_id=hyp.id if hyp else None,
-        name=f"{camp.name}: {useful[0]} carousels (B) vs {product_pillars[0]} posts (A)" if generic else
-        f"{camp.name}: carousel planning posts (B) vs single product posts (A)",
-        variants=[{"label": "A", "description": f"{product_pillars[0]} single-image post (control)"},
-                  {"label": "B", "description": f"{useful[0]} carousel (selected hypothesis)"}],
-        primary_metric=metric, success_criteria=camp.success_criteria, min_sample_per_variant=3, status="planned",
-        intervention=hyp.statement if hyp else "", baseline=base | {"filters": {"platform": primary}},
-        evaluation_window_days=camp.evaluation_window_days,
-        comparison_method=f"Within {primary}: permutation test on {metric} between variants; lift also reported "
-                          "against the brand's earlier posts.", is_synthetic=ctx.settings.is_demo)
-    ctx.db.add(exp)
-    ctx.db.flush()
+    options = inp.option_count
+    exp = None
+    if options == 1:
+        exp = Experiment(
+            workspace_id=ctx.workspace_id, campaign_id=camp.id, hypothesis_id=hyp.id if hyp else None,
+            name=f"{camp.name}: {useful[0]} carousels (B) vs {product_pillars[0]} posts (A)" if generic else
+            f"{camp.name}: carousel planning posts (B) vs single product posts (A)",
+            variants=[{"label": "A", "description": f"{product_pillars[0]} single-image post (control)"},
+                      {"label": "B", "description": f"{useful[0]} carousel (selected hypothesis)"}],
+            primary_metric=metric, success_criteria=camp.success_criteria, min_sample_per_variant=3, status="planned",
+            intervention=hyp.statement if hyp else "", baseline=base | {"filters": {"platform": primary}},
+            evaluation_window_days=camp.evaluation_window_days,
+            comparison_method=f"Within {primary}: permutation test on {metric} between variants; lift also reported "
+                              "against the brand's earlier posts.", is_synthetic=ctx.settings.is_demo)
+        ctx.db.add(exp)
+        ctx.db.flush()
     camp.start_date, camp.end_date, camp.status = start, start + timedelta(days=inp.days - 1), "planned"
     camp.baseline = base
     if hyp:
@@ -180,34 +185,46 @@ def prepare_schedule(ctx: ToolContext, inp: ScheduleIn) -> ToolResult:
     ids, festive_used, offer_used = [], False, False
     for d in range(inp.days):
         day = start + timedelta(days=d)
-        variant = "B" if d % 2 == 0 else "A"
-        if variant == "B":
-            pillar, ctype = useful[(d // 2) % len(useful)], "carousel"
-        else:
-            pillar, ctype = product_pillars[(d // 2) % len(product_pillars)], "post"
-            if not generic and occasion and not festive_used and (occ_day is None or day >= occ_day - timedelta(days=10)):
-                pillar, festive_used = "Festive", True
-            if generic and occasion and pillar_kind(pillar) == "offer":
-                if offer_used:
-                    pillar = product_pillars[0]
-                offer_used = True
-        local = datetime.combine(day, _times(b, d), tzinfo=tz)
-        item = ContentItem(workspace_id=ctx.workspace_id, brand_id=b.id, campaign_id=camp.id, experiment_id=exp.id,
-                           variant_label=variant, run_id=ctx.run.id, platform=primary, content_type=ctype,
-                           pillar=pillar, title=f"Day {d + 1}: {pillar}",
-                           planned_at=local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None),
-                           product_ids=[prod_ids[d % len(prod_ids)]] if prod_ids else [],
-                           generated_by=gen.name, created_by=ctx.run.created_by, is_synthetic=ctx.settings.is_demo)
-        ctx.db.add(item)
-        ctx.db.flush()
-        add_revision(ctx.db, item, gen.name, None, "Calendar slot created")
-        ids.append(item.id)
-    ctx.remember("experiment_id", exp.id)
+        for option in range(options):
+            if options > 1:
+                variant = f"option-{option + 1}"
+                all_pillars = useful + product_pillars
+                pillar = all_pillars[option % len(all_pillars)]
+                ctype = inp.content_type or "post"
+            else:
+                variant = "B" if d % 2 == 0 else "A"
+                if variant == "B":
+                    pillar, ctype = useful[(d // 2) % len(useful)], "carousel"
+                else:
+                    pillar, ctype = product_pillars[(d // 2) % len(product_pillars)], "post"
+                    if not generic and occasion and not festive_used and (occ_day is None or day >= occ_day - timedelta(days=10)):
+                        pillar, festive_used = "Festive", True
+                    if generic and occasion and pillar_kind(pillar) == "offer":
+                        if offer_used:
+                            pillar = product_pillars[0]
+                        offer_used = True
+            if inp.content_type:
+                ctype = inp.content_type
+            local = datetime.combine(day, _times(b, d), tzinfo=tz)
+            item = ContentItem(workspace_id=ctx.workspace_id, brand_id=b.id, campaign_id=camp.id,
+                               experiment_id=exp.id if exp else None,
+                               variant_label=variant, run_id=ctx.run.id, platform=primary, content_type=ctype,
+                               pillar=pillar,
+                               title=f"Day {d + 1}: {pillar}" + (f" — Option {option + 1}" if options > 1 else ""),
+                               planned_at=local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None),
+                               product_ids=[prod_ids[d % len(prod_ids)]] if prod_ids else [],
+                               generated_by=gen.name, created_by=ctx.run.created_by, is_synthetic=ctx.settings.is_demo)
+            ctx.db.add(item)
+            ctx.db.flush()
+            add_revision(ctx.db, item, gen.name, None, "Alternative post option" if options > 1 else "Calendar slot created")
+            ids.append(item.id)
+    if exp:
+        ctx.remember("experiment_id", exp.id)
     ctx.remember("content_ids", ids)
     times = ", ".join(t.strftime("%H:%M") for t in {_times(b, 0), _times(b, 1)})
     return ToolResult(
-        f"Calendar: {len(ids)} {primary} slot(s) {start:%d %b}–{camp.end_date:%d %b} ({tz.key}) at {times}; experiment "
-        f"#{exp.id} ({metric}); baseline {base['note'].lower()}", {"campaign_id": camp.id, "experiment_id": exp.id,
+        f"Calendar: {len(ids)} {primary} post option(s) across {inp.days} date(s) {start:%d %b}–{camp.end_date:%d %b} ({tz.key}) at {times}; "
+        + (f"experiment #{exp.id} ({metric}); " if exp else "") + f"baseline {base['note'].lower()}", {"campaign_id": camp.id, "experiment_id": exp.id if exp else None,
                                                                    "content_ids": ids, "baseline": base,
                                                                    "timezone": tz.key}, is_mock=gen.is_mock)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
 from datetime import timedelta
 from statistics import mean
@@ -11,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from ..adapters import AdapterError, get_adapter
-from ..models import Campaign, ContentItem, ContentStatus, MetricSnapshot, utcnow
+from ..models import Campaign, ChannelConnection, ContentItem, ContentStatus, MetricSnapshot, utcnow
 from .connections import context
 
 log = logging.getLogger(__name__)
@@ -221,3 +222,34 @@ def summary(db: Session, workspace_id: int, campaign_id: int | None = None) -> d
         "items": sorted(with_m, key=lambda r: r["engagement_rate"] or 0, reverse=True),
         "definitions": METRIC_DEFINITIONS,
     }
+
+
+_ACCOUNT_CACHE: dict[int, tuple[float, dict]] = {}
+ACCOUNT_CACHE_SECONDS = 600
+
+
+def instagram_account(db: Session, workspace_id: int, *, force: bool = False) -> dict:
+    """Engagement for recent posts on the connected Instagram account, including posts made outside GrowthPilot."""
+    cached = _ACCOUNT_CACHE.get(workspace_id)
+    if cached and not force and time.time() - cached[0] < ACCOUNT_CACHE_SECONDS:
+        return cached[1]
+    conn = db.execute(select(ChannelConnection).where(
+        ChannelConnection.workspace_id == workspace_id, ChannelConnection.adapter == "instagram",
+        ChannelConnection.status == "connected").order_by(ChannelConnection.id.desc())).scalars().first()
+    if conn is None:
+        return {"connected": False, "account": None, "posts": [], "fetched_at": None, "error": None}
+    out = {"connected": True, "account": conn.account_label, "posts": [], "fetched_at": _iso(utcnow()), "error": None}
+    try:
+        posts = get_adapter("instagram").list_media(context(db, conn), limit=50)
+    except AdapterError as exc:
+        out["error"] = str(exc)[:300]
+        return out  # not cached, so the next visit retries
+    for post in posts:
+        parts = [post.get(k) for k in ("likes", "comments", "shares", "saves")]
+        post["interactions"] = sum(parts) if None not in parts else None
+        post["engagement_rate"] = (post["interactions"] / post["reach"]
+                                   if post["interactions"] is not None and post.get("reach") else None)
+    out["posts"] = posts
+    db.commit()  # token refresh may have been saved
+    _ACCOUNT_CACHE[workspace_id] = (time.time(), out)
+    return out

@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from ... import usage
 from ...config import get_settings
+from ...creative.imagegen import image_price
 from ...models import Campaign, Hypothesis, ResearchFinding, Workspace, utcnow
 from ...platforms import ORDER, SPECS
 from ...services import analytics
@@ -146,19 +147,22 @@ def rank_campaign_ideas(ctx: ToolContext, inp: RankIn) -> ToolResult:
 
 class CostIn(ToolInput):
     campaign_id: int | None = None
-    ai_backgrounds: bool = Field(default=False, description="Include AI-generated backgrounds in the estimate.")
+    ai_backgrounds: bool = Field(default=False, description="Include complete Gemini-generated post images in the estimate.")
 
 
 @tool("estimate_campaign_cost", "Estimate provider costs for the rest of the campaign (LLM calls for briefs, captions "
-      "and variants; searches; optional AI backgrounds) and compare with the run, campaign and monthly budgets. "
-      "Local poster rendering is free.", CostIn, Permission.READ, role=S, effects=(Effect.READ_ONLY,))
+      "and variants; searches; complete Gemini-generated post images) and compare with the run, campaign and monthly "
+      "budgets. Local poster rendering is free when Gemini image generation is unavailable.", CostIn, Permission.READ,
+      role=S, effects=(Effect.READ_ONLY,))
 def estimate_campaign_cost(ctx: ToolContext, inp: CostIn) -> ToolResult:
     s = get_settings()
     cid = inp.campaign_id or ctx.state.get("campaign_id")
     camp = ctx.db.get(Campaign, cid) if cid else None
-    days = ctx.state.get("params", {}).get("days", 7)
+    params = ctx.state.get("params", {})
+    days = int(params.get("days", 7))
+    options = max(1, min(5, int(params.get("option_count", 1))))
     platforms = (camp.platforms if camp else None) or ctx.state.get("platforms") or ["instagram"]
-    masters = days
+    masters = days * options
     variants = masters * max(0, len(platforms) - 1)
     lines = []
     if s.is_demo:
@@ -175,10 +179,11 @@ def estimate_campaign_cost(ctx: ToolContext, inp: CostIn) -> ToolResult:
             {"item": "Planner turns (~15)", "usd": round(usage.token_cost(model, 12000, 1500) * 15, 4), "note": model},
         ]
         if inp.ai_backgrounds and s.image_generation_configured:
-            lines.append({"item": f"AI backgrounds ({masters})", "usd": round(usage.unit_cost(s.image_generation_model)
-                                                                          * masters, 4),
-                          "note": s.image_generation_model})
-    lines.append({"item": "Poster rendering", "usd": 0.0, "note": "Local (Pillow); free."})
+            price = image_price(s.campaign_image_model, s.campaign_image_size)
+            lines.append({"item": f"Gemini post images ({masters})", "usd": round(price * masters, 4),
+                          "note": f"{s.campaign_image_model} · {s.campaign_image_size}"})
+    if not (not s.is_demo and inp.ai_backgrounds and s.image_generation_configured):
+        lines.append({"item": "Poster rendering", "usd": 0.0, "note": "Local (Pillow); free."})
     est = round(sum(x["usd"] for x in lines), 4)
     ws = ctx.db.get(Workspace, ctx.workspace_id)
     run_spent = usage.spent(ctx.db, run_id=ctx.run.id)

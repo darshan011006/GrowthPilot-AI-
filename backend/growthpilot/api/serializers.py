@@ -75,7 +75,9 @@ SOURCE_LABELS = {"upload": "Uploaded", "catalogue": "Real product photo (store)"
 
 def asset(a: Asset, full: bool = False) -> dict:
     meta = a.meta or {}
-    d = {"id": a.id, "kind": a.kind, "source": a.source, "source_label": SOURCE_LABELS.get(a.source, a.source),
+    source_label = ("Gemini-generated image" if meta.get("generation_mode") == "full_image"
+                    else SOURCE_LABELS.get(a.source, a.source))
+    d = {"id": a.id, "kind": a.kind, "source": a.source, "source_label": source_label,
          "filename": a.filename, "content_type": a.content_type, "size_bytes": a.size_bytes, "width": a.width,
          "height": a.height, "alt_text": a.alt_text, "is_synthetic": a.is_synthetic, "url": f"/api/assets/{a.id}/file",
          "placeholder": a.source == "placeholder", "origin_url": a.origin_url, "sha256": a.sha256,
